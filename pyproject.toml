@@ -1,0 +1,9 @@
+[project]
+name = "generative-agent-sandbox"
+version = "0.1.0"
+description = "A small single-agent simulation inspired by Generative Agents: Interactive Simulacra of Human Behavior."
+requires-python = ">=3.10"
+dependencies = []
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
