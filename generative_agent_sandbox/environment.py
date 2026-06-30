@@ -3,7 +3,7 @@ from __future__ import annotations
 import random
 from dataclasses import dataclass
 
-from .models import Decision
+from .models import ACTION_BY_ID, Decision, normalize_action_id
 
 
 @dataclass
@@ -123,61 +123,68 @@ class CampusWorld:
         destination = self._normalize_location(decision.destination)
         self.location = destination
 
-        action_text = decision.action.lower()
-        if "eat" in action_text or "meal" in action_text or "snack" in action_text:
+        action_id = decision.action_id or normalize_action_id(decision.action) or "unknown"
+        if action_id == "eat_meal":
             self.hunger = max(0, self.hunger - 5)
-            self.energy = min(10, self.energy + 1)
+            self.energy = min(10, self.energy + 2)
             self.focus = min(10, self.focus + 1)
             self.mood = "steadier"
             result = "Maya eats something and feels more able to think clearly."
-        elif "coffee" in action_text:
-            self.hunger = min(10, self.hunger + 1)
-            self.energy = min(10, self.energy + 2)
+        elif action_id == "buy_snack":
+            self.hunger = max(0, self.hunger - 3)
+            self.energy = min(10, self.energy + 1)
             self.focus = min(10, self.focus + 1)
-            self.mood = "alert"
-            result = "Maya gets coffee and feels briefly more alert."
-        elif "rest" in action_text or "nap" in action_text:
+            self.mood = "steadier"
+            result = "Maya buys a snack and keeps hunger from taking over."
+        elif action_id == "rest":
             self.hunger = min(10, self.hunger + 1)
             self.energy = min(10, self.energy + 4)
-            self.focus = min(10, self.focus + 1)
+            self.focus = min(10, self.focus + 2)
             self.mood = "rested"
             result = "Maya rests and recovers energy."
-        elif "review" in action_text or "log" in action_text or "surprise" in action_text:
-            self.progress = min(100, self.progress + 1)
+        elif action_id == "review_notes":
+            self.progress = min(100, self.progress + 2)
             self.hunger = min(10, self.hunger + 1)
             self.energy = max(0, self.energy - 1)
             self.focus = max(0, self.focus - 1)
             self.mood = "reflective"
             result = "Maya annotates the transcript and preserves evidence for the writeup."
-        elif "study" in action_text or "work" in action_text or "write" in action_text:
+        elif action_id == "work_on_project":
             gain = 4 if self.location == "Library" else 2
             if self.focus >= 5 and self.energy >= 4:
                 gain += 2
+            if self.hunger >= 8 or self.energy <= 2 or self.focus <= 2:
+                gain = max(1, gain - 2)
             self.progress = min(100, self.progress + gain)
             self.hunger = min(10, self.hunger + 1)
             self.energy = max(0, self.energy - 1)
             self.focus = max(0, self.focus - 1)
             self.mood = "absorbed"
             result = f"Maya makes {gain} points of project progress."
-        elif "class" in action_text or "discussion" in action_text:
+        elif action_id == "attend_discussion":
             self.progress = min(100, self.progress + 3)
             self.hunger = min(10, self.hunger + 1)
             self.energy = max(0, self.energy - 1)
             self.focus = min(10, self.focus + 1)
             self.mood = "thoughtful"
             result = "Maya attends discussion and leaves with a clearer implementation idea."
-        elif "walk" in action_text or "park" in action_text or "break" in action_text:
+        elif action_id == "take_break":
             self.hunger = min(10, self.hunger + 1)
             self.energy = min(10, self.energy + 1)
             self.focus = min(10, self.focus + 3)
             self.mood = "reset"
             result = "Maya takes a short reset break and returns with better focus."
-        elif "organize" in action_text or "plan" in action_text:
+        elif action_id == "organize_notes":
             self.progress = min(100, self.progress + 2)
             self.focus = min(10, self.focus + 2)
             self.energy = max(0, self.energy - 1)
             self.mood = "organized"
             result = "Maya organizes the project notes into a clearer plan."
+        elif action_id in ACTION_BY_ID:
+            self.hunger = min(10, self.hunger + 1)
+            self.energy = max(0, self.energy - 1)
+            self.focus = max(0, self.focus - 1)
+            result = f"Maya relocates to the {self.location} and prepares for the next step."
         else:
             self.hunger = min(10, self.hunger + 1)
             self.energy = max(0, self.energy - 1)

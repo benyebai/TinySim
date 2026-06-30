@@ -71,7 +71,10 @@ class GenerativeAgent:
         outcome = self._remember(
             step=step,
             kind="action",
-            text=f"Maya chose to {decision.action} at the {decision.destination}. {outcome_text}",
+            text=(
+                f"Maya chose {decision.action_id} ({decision.action}) "
+                f"at the {decision.destination}. {outcome_text}"
+            ),
             location=world.location,
         )
 

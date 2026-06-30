@@ -7,7 +7,14 @@ import urllib.error
 import urllib.request
 from typing import Any
 
-from .models import Decision, Memory, ReflectionDraft, RetrievalResult
+from .models import (
+    Decision,
+    Memory,
+    ReflectionDraft,
+    RetrievalResult,
+    action_schema_text,
+    normalize_action_id,
+)
 
 
 class BaseLLM:
@@ -58,78 +65,67 @@ class DeterministicLLM(BaseLLM):
         state = _parse_state(world_state)
 
         if state["progress"] >= 100 and state["hunger"] < 8 and state["energy"] > 2:
-            return Decision(
-                action="review the completed run log and write down what changed because of reflection",
-                destination="Dorm",
+            return Decision.from_action_id(
+                "review_notes",
                 reason="The project has reached completion, so the most valuable work is documenting surprises.",
             )
 
         if state["hunger"] >= 8 or "stomach" in combined or "skipped a meal" in combined:
-            return Decision(
-                action="eat a simple meal while reviewing the next project step",
-                destination="Cafe",
+            return Decision.from_action_id(
+                "eat_meal",
                 reason="Hunger is starting to threaten focus, and food has been a recurring constraint.",
             )
 
         if state["energy"] <= 2 or "mentally foggy" in combined:
-            return Decision(
-                action="rest briefly and reset before doing more project work",
-                destination="Dorm",
+            return Decision.from_action_id(
+                "rest",
                 reason="The memories suggest low energy makes Maya reread without making progress.",
             )
 
         if "class reminder" in combined or "discussion starts soon" in combined:
-            return Decision(
-                action="attend the behavioral modeling discussion",
-                destination="Classroom",
+            return Decision.from_action_id(
+                "attend_discussion",
                 reason="The reminder is time-sensitive and directly related to the project.",
             )
 
         if "professor" in combined or "clearer evidence" in combined:
-            return Decision(
-                action="work on showing clearer evidence of memory retrieval in the log",
-                destination="Library",
+            return Decision.from_action_id(
+                "work_on_project",
                 reason="The professor's note makes the implementation evidence more important than generic progress.",
             )
 
         if "same action" in combined or "appeared in her log several times" in combined:
-            return Decision(
-                action="organize the plan and add variety to the next project actions",
-                destination="Dorm",
+            return Decision.from_action_id(
+                "organize_notes",
                 reason="The log suggests repetition, so Maya should adjust the plan instead of repeating blindly.",
             )
 
         if state["focus"] <= 2 or "attention keeps drifting" in combined:
-            return Decision(
-                action="take a short walk to recover focus",
-                destination="Park",
+            return Decision.from_action_id(
+                "take_break",
                 reason="The memory stream shows focus drops when Maya pushes through fatigue.",
             )
 
         if "notes are scattered" in combined or "checklist" in combined:
-            return Decision(
-                action="organize the project notes into a clear implementation checklist",
-                destination="Dorm",
+            return Decision.from_action_id(
+                "organize_notes",
                 reason="Scattered notes are blocking progress more than effort is.",
             )
 
         if "sticky note" in combined or "what changed because of reflection" in combined:
-            return Decision(
-                action="review the run log and mark moments where reflection changed behavior",
-                destination="Dorm",
+            return Decision.from_action_id(
+                "review_notes",
                 reason="The assignment emphasizes surprises, so Maya should preserve evidence while it is fresh.",
             )
 
         if "quiet desk" in combined or "library" in combined or state["progress"] < 65:
-            return Decision(
-                action="study and write the memory retrieval portion of the project",
-                destination="Library",
+            return Decision.from_action_id(
+                "work_on_project",
                 reason="The retrieved memories point to the library as the best place for focused project progress.",
             )
 
-        return Decision(
-            action="review the run log and write down what changed because of reflection",
-            destination="Dorm",
+        return Decision.from_action_id(
+            "review_notes",
             reason="The project is far enough along that documenting surprises is the highest-value next step.",
         )
 
@@ -250,8 +246,12 @@ class OpenAIChatLLM(BaseLLM):
         )
         prompt = f"""
 You control one text-based generative agent. Keep the agent grounded in the provided state and memories.
-Return strict JSON with keys: action, destination, reason.
-Destination must be one of: Dorm, Library, Cafe, Classroom, Park, Store.
+Return strict JSON with keys: action_id, reason.
+action_id must be exactly one of the allowed ids below. Do not invent ids.
+Use go_to_* only when relocation itself is the goal. If Maya needs food, choose eat_meal or buy_snack. If Maya needs energy, choose rest. If Maya needs project progress, choose work_on_project.
+
+Allowed actions:
+{action_schema_text()}
 
 Agent:
 {agent_summary}
@@ -267,11 +267,10 @@ Retrieved memories:
 """.strip()
         try:
             data = _extract_json(self._complete(prompt, temperature=0.35, max_tokens=220))
-            return Decision(
-                action=str(data["action"]),
-                destination=str(data["destination"]),
-                reason=str(data["reason"]),
-            )
+            action_id = normalize_action_id(str(data.get("action_id", data.get("action", ""))))
+            if action_id is None:
+                raise ValueError(f"Unknown action id: {data}")
+            return Decision.from_action_id(action_id, reason=str(data["reason"]))
         except Exception:
             return self.fallback.choose_action(
                 agent_summary=agent_summary,

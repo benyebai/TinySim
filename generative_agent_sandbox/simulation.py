@@ -83,7 +83,10 @@ def write_markdown_log(path: Path, *, logs: list[StepLog], llm_mode: str) -> Non
         lines.extend(
             [
                 "",
-                f"Decision: `{entry.decision.action}` -> `{entry.decision.destination}`",
+                (
+                    f"Decision: `{entry.decision.action_id}` "
+                    f"({entry.decision.action}) -> `{entry.decision.destination}`"
+                ),
                 "",
                 f"Reason: {entry.decision.reason}",
                 "",
