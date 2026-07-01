@@ -87,12 +87,12 @@ Summary:
 {
   "steps": 80,
   "final_location": "Cafe",
-  "final_hunger": 10,
-  "final_energy": 0,
-  "final_focus": 0,
-  "final_project_progress": 10,
-  "memory_count": 182,
-  "reflection_count": 18
+  "final_hunger": 2,
+  "final_energy": 8,
+  "final_focus": 7,
+  "final_project_progress": 100,
+  "memory_count": 184,
+  "reflection_count": 20
 }
 ```
 
@@ -109,6 +109,7 @@ Each retrieved memory includes the total score plus the component scores.
 Important files:
 
 - `generative_agent_sandbox/memory.py`: memory stream and retrieval scoring
+- `generative_agent_sandbox/models.py`: structured action schema and run data models
 - `generative_agent_sandbox/agent.py`: observe, retrieve, act, reflect loop
 - `generative_agent_sandbox/environment.py`: small campus world
 - `generative_agent_sandbox/llm.py`: deterministic, OpenAI, and Vercel AI Gateway backends
@@ -153,7 +154,9 @@ One useful surprise was that the agent began retrieving early reflections about 
 
 Another surprise came from an implementation bug. An action that said "rest before doing more project work" was initially interpreted as work because of the word "work." The transcript exposed this quickly because the agent kept becoming more tired while supposedly resting. That reinforced why a visible run log is useful for agent debugging.
 
-The live gateway run surfaced a sharper failure mode. Maya repeatedly reasoned that food and rest were needed, but the model often emitted vague actions like `go`, `go to Cafe`, or `go to Dorm`. The environment could not reliably translate those into eating or resting, so most outcomes had only a modest effect. This suggests that the next version needs a stricter action schema instead of open-ended action text.
+The first live gateway run surfaced a sharper failure mode. Maya repeatedly reasoned that food and rest were needed, but the model often emitted vague actions like `go`, `go to Cafe`, or `go to Dorm`. The environment could not reliably translate those into eating or resting, so most outcomes had only a modest effect.
+
+Adding a structured action schema fixed that grounding problem, but revealed a second issue: Maya would sometimes keep working even when energy and focus were depleted. The current version adds a small needs-aware guardrail, which produced a much healthier 80-step run: project progress reached 100, hunger ended at 2, energy at 8, and focus at 7.
 
 ## Next Improvements
 
@@ -161,9 +164,9 @@ Useful next steps:
 
 - Add an ablation mode: run with reflection disabled and compare behavior.
 - Add a final interview mode to ask Maya what she remembers and what she learned.
-- Add stricter action schemas so environment effects are less keyword-based.
-- Make OpenAI mode generate richer actions and reflections while preserving JSON output.
-- Improve the README writeup after inspecting a live LLM run.
+- Add a terminal "done for the day" state after the project reaches 100.
+- Compare deterministic, gateway, and no-reflection runs in one table.
+- Make OpenAI mode generate richer final interviews while preserving JSON output.
 
 ## Paper Notes
 
