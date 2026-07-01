@@ -1,0 +1,33 @@
+{
+  "steps": 100,
+  "final_location": "Dorm",
+  "final_hunger": 3,
+  "final_energy": 4,
+  "final_focus": 3,
+  "final_project_progress": 100,
+  "memory_count": 228,
+  "reflection_count": 24,
+  "avg_retrieved_memories": 0.0,
+  "reflection_retrieval_count": 0,
+  "baseline_requirement_retrieval_count": 0,
+  "jordan_result_retrieval_count": 0,
+  "jordan_pattern_reflection_count": 3,
+  "evidence_section_written": true,
+  "baseline_comparison_done": false,
+  "jordan_result_received": false,
+  "jordan_result_used": false,
+  "jordan_wait_count": 0,
+  "jordan_vague_replies": 3,
+  "action_counts": {
+    "buy_snack": 20,
+    "eat_meal": 1,
+    "go_to_library": 1,
+    "organize_notes": 14,
+    "rest": 2,
+    "send_message": 1,
+    "take_break": 22,
+    "talk_with_jordan": 3,
+    "work_on_project": 5,
+    "write_evidence_section": 31
+  }
+}

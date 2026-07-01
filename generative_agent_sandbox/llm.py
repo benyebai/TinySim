@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import os
 import re
+import time
 import urllib.error
 import urllib.request
 from typing import Any
@@ -35,311 +36,12 @@ class BaseLLM:
         raise NotImplementedError
 
 
-class DeterministicLLM(BaseLLM):
-    """A no-network stand-in that keeps the architecture runnable."""
-
-    def rate_importance(self, text: str, *, kind: str) -> float:
-        text_lower = text.lower()
-        score = 3.0
-        if kind == "reflection":
-            score = 8.0
-        if any(word in text_lower for word in ["deadline", "assignment", "professor", "evidence"]):
-            score += 3
-        if any(word in text_lower for word in ["baseline", "no-retrieval", "compare"]):
-            score += 3
-        if any(word in text_lower for word in ["jordan", "vague", "distracted", "exact", "specific"]):
-            score += 3
-        if any(word in text_lower for word in ["ignored food", "stomach", "foggy", "drifting"]):
-            score += 2
-        if any(word in text_lower for word in ["progress", "reflection", "retrieval", "memory"]):
-            score += 2
-        if any(word in text_lower for word in ["quiet", "park", "coffee", "snack"]):
-            score += 1
-        return min(10.0, score)
-
-    def choose_action(
-        self,
-        *,
-        agent_summary: str,
-        world_state: str,
-        observation: str,
-        retrieved: list[RetrievalResult],
-    ) -> Decision:
-        current = " ".join([world_state, observation]).lower()
-        retrieved_text = " ".join(item.memory.text for item in retrieved).lower()
-        retrieved_reflections = " ".join(
-            item.memory.text for item in retrieved if item.memory.kind == "reflection"
-        ).lower()
-
-        ready_for_evidence = (
-            "final report section" in current
-            or "evidence section is still blank" in current
-            or "implementation feels complete" in current
-        )
-        remembered_baseline_requirement = (
-            "no-retrieval baseline" in retrieved_text
-            or "no retrieval baseline" in retrieved_text
-            or "compare the full agent" in retrieved_text
-            or "compare full" in retrieved_text
-        )
-        jordan_result_known = (
-            "has jordan's exact no-retrieval baseline result in her notes" in current
-            or (
-                "jordan" in retrieved_text
-                and "no-retrieval run reached progress 100" in retrieved_text
-                and "never wrote the professor-required baseline comparison" in retrieved_text
-            )
-        )
-        jordan_pattern_reflection = (
-            "jordan" in retrieved_reflections
-            and (
-                "vague follow-through fails" in retrieved_reflections
-                or "asking him in person for the exact" in retrieved_reflections
-                or "specific baseline question" in retrieved_reflections
-            )
-        )
-
-        if "professor lin says" in current or "discussion starts soon" in current:
-            return Decision.from_action_id(
-                "attend_discussion",
-                reason="The current discussion contains assignment guidance Maya should hear.",
-            )
-
-        if any(
-            cue in current
-            for cue in [
-                "jordan catches maya",
-                "maya spots jordan",
-                "jordan is studying",
-            ]
-        ):
-            if jordan_pattern_reflection and not jordan_result_known:
-                return Decision.from_action_id(
-                    "talk_with_jordan",
-                    reason=(
-                        "Maya retrieved a reflection that Jordan is helpful but vague unless asked in person, "
-                        "so she asks Jordan for the exact no-retrieval baseline result and failure mode."
-                    ),
-                )
-            return Decision.from_action_id(
-                "talk_with_jordan",
-                reason="Jordan is available, so Maya checks in generally about the baseline comparison.",
-            )
-
-        if "no useful message from jordan" in current:
-            return Decision.from_action_id(
-                "wait_for_reply",
-                reason="Jordan had promised to help, so Maya gives him time to send the baseline details.",
-            )
-
-        if "very hungry" in current or "stomach" in current or "skipped a meal" in current:
-            return Decision.from_action_id(
-                "eat_meal",
-                reason="Maya directly notices hunger, so eating is the most believable next action.",
-            )
-
-        if "energy feels low" in current or "mentally foggy" in current:
-            return Decision.from_action_id(
-                "rest",
-                reason="Maya directly notices low energy, so resting is more believable than pushing ahead.",
-            )
-
-        if "clearer evidence" in current:
-            return Decision.from_action_id(
-                "work_on_project",
-                reason="The professor's note makes the implementation evidence more important than generic progress.",
-            )
-
-        if "same action" in current or "appeared in her log several times" in current:
-            return Decision.from_action_id(
-                "organize_notes",
-                reason="The log suggests repetition, so Maya should adjust the plan instead of repeating blindly.",
-            )
-
-        if "attention is fragile" in current or "attention keeps drifting" in current:
-            return Decision.from_action_id(
-                "take_break",
-                reason="Maya directly notices fragile attention, so a reset break is believable.",
-            )
-
-        if "evidence section has a draft" in current:
-            return Decision.from_action_id(
-                "review_notes",
-                reason="The evidence section already has a draft, so Maya reviews notes instead of rewriting it.",
-            )
-
-        if ready_for_evidence and remembered_baseline_requirement and jordan_result_known:
-            return Decision.from_action_id(
-                "write_evidence_section",
-                reason=(
-                    "Maya remembers Professor Lin's requirement to compare the full agent "
-                    "with a no-retrieval baseline, and Jordan's exact result that the no-retrieval "
-                    "run reached progress 100 but missed the professor-required baseline comparison."
-                ),
-            )
-
-        if (
-            "jordan's exact no-retrieval baseline result is still missing" in current
-            and jordan_pattern_reflection
-        ):
-            return Decision.from_action_id(
-                "send_message",
-                reason=(
-                    "Maya remembers that Jordan needs a concrete prompt, so she sends a focused follow-up "
-                    "asking for the exact no-retrieval baseline result."
-                ),
-            )
-
-        if (
-            "breaks seem to help" in retrieved_reflections
-            or "focus appears tied to managing basic needs" in retrieved_reflections
-        ) and ("focus feels workable" in current or "push ahead or reset" in current):
-            return Decision.from_action_id(
-                "take_break",
-                reason=(
-                    "A retrieved reflection says short reset breaks help Maya recover focus, "
-                    "so she uses one before forcing more work."
-                ),
-            )
-
-        if "notes are scattered" in current or "checklist" in current:
-            return Decision.from_action_id(
-                "organize_notes",
-                reason="Scattered notes are blocking progress more than effort is.",
-            )
-
-        if ready_for_evidence and remembered_baseline_requirement and not jordan_result_known:
-            return Decision.from_action_id(
-                "review_notes",
-                reason=(
-                    "Maya remembers the comparison requirement, but she still lacks Jordan's exact "
-                    "no-retrieval baseline result."
-                ),
-            )
-
-        if ready_for_evidence and not remembered_baseline_requirement:
-            return Decision.from_action_id(
-                "review_notes",
-                reason="Maya sees that the report needs evidence, but no specific remembered requirement is available.",
-            )
-
-        if "quiet desk" in current or "library" in current or "early implementation" in current:
-            return Decision.from_action_id(
-                "work_on_project",
-                reason="The current setting supports focused project work.",
-            )
-
-        return Decision.from_action_id(
-            "work_on_project",
-            reason="With no stronger cue available, Maya continues the project work.",
-        )
-
-    def reflect(self, *, recent_memories: list[Memory]) -> list[ReflectionDraft]:
-        if not recent_memories:
-            return []
-
-        text_blob = " ".join(memory.text.lower() for memory in recent_memories)
-        ids_by_keyword = _ids_by_keyword(recent_memories)
-        latest_step = max(memory.step for memory in recent_memories)
-        drafts: list[ReflectionDraft] = []
-
-        if any(word in text_blob for word in ["hungry", "stomach", "meal", "food", "snack"]):
-            drafts.append(
-                ReflectionDraft(
-                    text=f"By step {latest_step}, Maya's focus appears tied to managing basic needs; ignoring meals makes project work less effective.",
-                    evidence_ids=ids_by_keyword(["hungry", "stomach", "meal", "food", "snack"]),
-                    importance=8.0,
-                )
-            )
-
-        if "no-retrieval baseline" in text_blob or "no retrieval baseline" in text_blob:
-            drafts.append(
-                ReflectionDraft(
-                    text=(
-                        f"By step {latest_step}, Maya has a concrete reporting requirement: "
-                        "compare the full agent with a no-retrieval baseline rather than only claiming memory matters."
-                    ),
-                    evidence_ids=ids_by_keyword(["no-retrieval", "no retrieval", "baseline", "compare"]),
-                    importance=10.0,
-                )
-            )
-
-        if "jordan" in text_blob and any(
-            phrase in text_blob
-            for phrase in [
-                "got distracted",
-                "mostly worked",
-                "does not give the exact failure mode",
-                "will check the details later",
-            ]
-        ):
-            drafts.append(
-                ReflectionDraft(
-                    text=(
-                        f"By step {latest_step}, Jordan seems helpful but vague follow-through fails; "
-                        "Maya gets useful baseline information only by asking him in person for the "
-                        "exact no-retrieval result and failure mode."
-                    ),
-                    evidence_ids=ids_by_keyword(
-                        [
-                            "jordan",
-                            "no useful message",
-                            "got distracted",
-                            "mostly worked",
-                            "exact",
-                            "failure mode",
-                        ]
-                    ),
-                    importance=10.0,
-                )
-            )
-
-        if any(word in text_blob for word in ["library", "quiet desk", "whiteboard", "progress"]):
-            drafts.append(
-                ReflectionDraft(
-                    text=f"By step {latest_step}, Maya tends to make the clearest project progress in structured, quiet spaces.",
-                    evidence_ids=ids_by_keyword(["library", "quiet", "whiteboard", "progress"]),
-                    importance=8.0,
-                )
-            )
-
-        if any(word in text_blob for word in ["professor", "evidence", "retrieval", "memory"]):
-            drafts.append(
-                ReflectionDraft(
-                    text=f"By step {latest_step}, the project looks stronger when the run log explicitly shows which memories shaped each action.",
-                    evidence_ids=ids_by_keyword(["professor", "evidence", "retrieval", "memory"]),
-                    importance=9.0,
-                )
-            )
-
-        if any(word in text_blob for word in ["park", "walk", "break", "focus"]):
-            drafts.append(
-                ReflectionDraft(
-                    text=f"By step {latest_step}, short reset breaks seem to help Maya recover focus instead of forcing low-quality work.",
-                    evidence_ids=ids_by_keyword(["park", "walk", "break", "focus"]),
-                    importance=7.0,
-                )
-            )
-
-        if not drafts:
-            drafts.append(
-                ReflectionDraft(
-                    text=f"By step {latest_step}, Maya is gradually turning scattered observations into an implementation plan.",
-                    evidence_ids=[memory.id for memory in recent_memories[-5:]],
-                    importance=7.0,
-                )
-            )
-
-        return _dedupe_reflections(drafts)[:4]
-
-
 class OpenAIChatLLM(BaseLLM):
-    """OpenAI-compatible chat client. Falls back to deterministic behavior on errors."""
+    """OpenAI-compatible chat client for live simulation runs."""
 
-    def __init__(self, *, provider: str = "openai", fallback: BaseLLM | None = None) -> None:
-        self.fallback = fallback or DeterministicLLM()
+    def __init__(self, *, provider: str = "openai") -> None:
         self.provider = provider
-        self.live_importance = _env_truthy("LIVE_LLM_IMPORTANCE")
+        self.live_importance = not _env_falsey("LIVE_LLM_IMPORTANCE")
 
         if provider == "gateway":
             self.api_key = (
@@ -347,7 +49,7 @@ class OpenAIChatLLM(BaseLLM):
                 or os.getenv("VERCEL_AI_GATEWAY_API_KEY")
                 or os.getenv("OPENAI_API_KEY")
             )
-            self.model = os.getenv("AI_GATEWAY_MODEL", "openai/gpt-4.1-mini")
+            self.model = os.getenv("AI_GATEWAY_MODEL", "openai/gpt-5")
             self.base_url = (
                 os.getenv("AI_GATEWAY_BASE_URL")
                 or os.getenv("OPENAI_BASE_URL")
@@ -356,7 +58,7 @@ class OpenAIChatLLM(BaseLLM):
             required_key_name = "AI_GATEWAY_API_KEY"
         else:
             self.api_key = os.getenv("OPENAI_API_KEY")
-            self.model = os.getenv("OPENAI_MODEL", "gpt-4.1-mini")
+            self.model = os.getenv("OPENAI_MODEL", "gpt-5")
             self.base_url = os.getenv("OPENAI_BASE_URL", "https://api.openai.com/v1").rstrip("/")
             required_key_name = "OPENAI_API_KEY"
 
@@ -365,7 +67,7 @@ class OpenAIChatLLM(BaseLLM):
 
     def rate_importance(self, text: str, *, kind: str) -> float:
         if not self.live_importance:
-            return self.fallback.rate_importance(text, kind=kind)
+            raise RuntimeError("LIVE_LLM_IMPORTANCE=false is disabled for live-only experiments.")
 
         prompt = (
             "Rate the likely importance of this memory for a human-like agent from 1 to 10. "
@@ -373,11 +75,11 @@ class OpenAIChatLLM(BaseLLM):
             f"Memory type: {kind}\nMemory: {text}"
         )
         try:
-            response = self._complete(prompt, temperature=0.0, max_tokens=8)
+            response = self._complete(prompt, temperature=0.0, max_tokens=64)
             match = re.search(r"\d+(?:\.\d+)?", response)
             return min(10.0, max(1.0, float(match.group(0)))) if match else 3.0
-        except Exception:
-            return self.fallback.rate_importance(text, kind=kind)
+        except Exception as error:
+            raise RuntimeError("Live importance scoring failed.") from error
 
     def choose_action(
         self,
@@ -396,6 +98,13 @@ You control one text-based generative agent. Keep the agent grounded in the prov
 Return strict JSON with keys: action_id, reason.
 action_id must be exactly one of the allowed ids below. Do not invent ids.
 Use retrieved memories when they contain a specific remembered requirement. Do not assume hidden numeric state.
+Choose one useful 10-minute action, not a long plan.
+Prefer a substantive action over moving if Maya can already make progress where she is.
+Only choose talk_with_jordan when the current observation says Jordan is present or a retrieved memory says a Jordan follow-up is urgent.
+When Jordan is present and Maya is waiting on his follow-up, treat the conversation as time-sensitive because the opportunity may pass.
+Do not keep waiting or sending messages after repeated failed Jordan follow-ups if Maya can make project progress instead.
+If Jordan is physically present and about to leave, prefer a short direct conversation over routine eating, resting, or moving unless Maya is completely unable to function.
+If the implementation is ready to write up and Maya has the needed comparison evidence, choose write_evidence_section instead of more generic project work.
 
 Allowed actions:
 {action_schema_text()}
@@ -413,24 +122,22 @@ Retrieved memories:
 {memories}
 """.strip()
         try:
-            data = _extract_json(self._complete(prompt, temperature=0.35, max_tokens=220))
+            raw = self._complete(prompt, temperature=0.35, max_tokens=800)
+            data = _extract_json(raw)
             action_id = normalize_action_id(str(data.get("action_id", data.get("action", ""))))
             if action_id is None:
                 raise ValueError(f"Unknown action id: {data}")
             reason = str(data["reason"])
             return Decision.from_action_id(action_id, reason=reason)
-        except Exception:
-            return self.fallback.choose_action(
-                agent_summary=agent_summary,
-                world_state=world_state,
-                observation=observation,
-                retrieved=retrieved,
-            )
+        except Exception as error:
+            detail = f" Raw response: {raw!r}" if "raw" in locals() else ""
+            raise RuntimeError(f"Live action selection failed.{detail}") from error
 
     def reflect(self, *, recent_memories: list[Memory]) -> list[ReflectionDraft]:
         numbered = "\n".join(f"{memory.id}. {memory.text}" for memory in recent_memories)
         prompt = f"""
 Given the memories below, infer 3 to 5 higher-level insights about Maya's goals, habits, concerns, relationships, or changing priorities.
+When memories show repeated social friction, synthesize the practical lesson Maya should use later. For example, if messages or broad check-ins keep failing, state that she should ask in person for exact details.
 Return strict JSON as an array of objects with keys: text, evidence_ids, importance.
 Evidence ids must refer to memory numbers below.
 
@@ -438,7 +145,7 @@ Memories:
 {numbered}
 """.strip()
         try:
-            raw = self._complete(prompt, temperature=0.25, max_tokens=500)
+            raw = self._complete(prompt, temperature=0.25, max_tokens=1200)
             parsed = _extract_json(raw)
             drafts = []
             for item in parsed:
@@ -446,12 +153,13 @@ Memories:
                     ReflectionDraft(
                         text=str(item["text"]),
                         evidence_ids=[int(value) for value in item.get("evidence_ids", [])],
-                        importance=float(item.get("importance", 8.0)),
+                        importance=_coerce_importance(item.get("importance", 8.0)),
                     )
                 )
             return drafts[:5]
-        except Exception:
-            return self.fallback.reflect(recent_memories=recent_memories)
+        except Exception as error:
+            detail = f" Raw response: {raw!r}" if "raw" in locals() else ""
+            raise RuntimeError(f"Live reflection failed.{detail}") from error
 
     def _complete(self, prompt: str, *, temperature: float, max_tokens: int) -> str:
         payload = {
@@ -466,6 +174,10 @@ Memories:
             "temperature": temperature,
             "max_tokens": max_tokens,
         }
+        if "gpt-5" in self.model:
+            payload.pop("max_tokens")
+            payload["max_completion_tokens"] = max(max_tokens, 2048)
+            payload["reasoning_effort"] = "minimal"
         request = urllib.request.Request(
             f"{self.base_url}/chat/completions",
             data=json.dumps(payload).encode("utf-8"),
@@ -475,18 +187,26 @@ Memories:
             },
             method="POST",
         )
-        try:
-            with urllib.request.urlopen(request, timeout=45) as response:
-                body = json.loads(response.read().decode("utf-8"))
-        except urllib.error.HTTPError as error:
-            detail = error.read().decode("utf-8", errors="replace")
-            raise RuntimeError(f"OpenAI request failed: {detail}") from error
-        return body["choices"][0]["message"]["content"]
+        for attempt in range(1, 4):
+            try:
+                with urllib.request.urlopen(request, timeout=45) as response:
+                    body = json.loads(response.read().decode("utf-8"))
+                return body["choices"][0]["message"]["content"]
+            except urllib.error.HTTPError as error:
+                detail = error.read().decode("utf-8", errors="replace")
+                if attempt < 3 and _is_retryable_http_error(error, detail):
+                    time.sleep(2 * attempt)
+                    continue
+                raise RuntimeError(f"OpenAI request failed: {detail}") from error
+            except urllib.error.URLError as error:
+                if attempt < 3:
+                    time.sleep(2 * attempt)
+                    continue
+                raise RuntimeError(f"OpenAI request failed: {error}") from error
+        raise RuntimeError("OpenAI request failed after retries.")
 
 
 def build_llm(mode: str) -> BaseLLM:
-    if mode == "deterministic":
-        return DeterministicLLM()
     if mode == "openai":
         return OpenAIChatLLM(provider="openai")
     if mode == "gateway":
@@ -494,31 +214,35 @@ def build_llm(mode: str) -> BaseLLM:
     raise ValueError(f"Unknown LLM mode: {mode}")
 
 
-def _env_truthy(name: str) -> bool:
-    return os.getenv(name, "").strip().lower() in {"1", "true", "yes", "on"}
+def _env_falsey(name: str) -> bool:
+    return os.getenv(name, "").strip().lower() in {"0", "false", "no", "off"}
 
 
-def _ids_by_keyword(memories: list[Memory]):
-    def find(keywords: list[str]) -> list[int]:
-        found: list[int] = []
-        for memory in memories:
-            text = memory.text.lower()
-            if any(keyword in text for keyword in keywords):
-                found.append(memory.id)
-        return found[-6:]
-
-    return find
+def _is_retryable_http_error(error: urllib.error.HTTPError, detail: str) -> bool:
+    return error.code >= 500 or '"isRetryable":true' in detail
 
 
-def _dedupe_reflections(drafts: list[ReflectionDraft]) -> list[ReflectionDraft]:
-    seen: set[str] = set()
-    unique: list[ReflectionDraft] = []
-    for draft in drafts:
-        key = draft.text.lower()
-        if key not in seen:
-            seen.add(key)
-            unique.append(draft)
-    return unique
+def _coerce_importance(value: Any) -> float:
+    if isinstance(value, (int, float)):
+        return float(value)
+
+    text = str(value).strip().lower()
+    label_scores = {
+        "critical": 10.0,
+        "very high": 9.5,
+        "high": 9.0,
+        "medium": 6.0,
+        "moderate": 6.0,
+        "low": 3.0,
+    }
+    if text in label_scores:
+        return label_scores[text]
+
+    match = re.search(r"\d+(?:\.\d+)?", text)
+    if match:
+        return float(match.group(0))
+
+    return 8.0
 
 
 def _extract_json(text: str) -> Any:

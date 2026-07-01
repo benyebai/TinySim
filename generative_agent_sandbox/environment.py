@@ -19,11 +19,18 @@ class WorldSnapshot:
     evidence_section_written: bool
     jordan_promised_baseline: bool
     jordan_result_received: bool
+    jordan_wait_count: int
+    jordan_vague_replies: int
 
     def describe(self) -> str:
         body_state = _body_state(self.hunger, self.energy, self.focus)
         project_state = _project_state(self.progress, self.evidence_section_written)
-        jordan_state = _jordan_state(self.jordan_promised_baseline, self.jordan_result_received)
+        jordan_state = _jordan_state(
+            self.jordan_promised_baseline,
+            self.jordan_result_received,
+            self.jordan_wait_count,
+            self.jordan_vague_replies,
+        )
         return (
             f"It is {self.time_label}. Maya is at the {self.location}. "
             f"{body_state} {project_state} {jordan_state} Maya's mood is {self.mood}."
@@ -65,6 +72,8 @@ class CampusWorld:
             evidence_section_written=self.evidence_section_written,
             jordan_promised_baseline=self.jordan_promised_baseline,
             jordan_result_received=self.jordan_result_received,
+            jordan_wait_count=self.jordan_wait_count,
+            jordan_vague_replies=self.jordan_vague_replies,
         )
 
     def time_label(self, step: int) -> str:
@@ -91,7 +100,7 @@ class CampusWorld:
             28: "Maya spots Jordan in the cafe; he looks friendly but distracted.",
             31: "Maya rereads the assignment note that says the surprises matter most.",
             37: "A professor's comment in the margin asks for clearer evidence of memory retrieval.",
-            39: "Maya reviews the outline and notices Jordan's exact no-retrieval baseline result is still missing.",
+            39: "Maya reviews the outline and notices Jordan's promised baseline note is still missing.",
             43: "Jordan is studying near the library window before leaving for lab.",
             44: "The park is unusually quiet, making it easier to think without pressure.",
             52: "Maya notices that the same action has appeared in her log several times.",
@@ -184,10 +193,16 @@ class CampusWorld:
             self.mood = "waiting"
             if self.jordan_promised_baseline and not self.jordan_result_received:
                 self.jordan_wait_count += 1
-                result = (
-                    "Maya waits for Jordan's promised baseline message, but no useful "
-                    "result arrives."
-                )
+                if self.jordan_wait_count >= 2:
+                    result = (
+                        "Maya waits again for Jordan's promised baseline message, but no useful "
+                        "result arrives. Waiting is no longer a good strategy."
+                    )
+                else:
+                    result = (
+                        "Maya waits for Jordan's promised baseline message, but no useful "
+                        "result arrives."
+                    )
             else:
                 result = "Maya waits for a reply, but there is no useful update."
         elif action_id == "send_message":
@@ -197,6 +212,12 @@ class CampusWorld:
             self.mood = "checking in"
             if self.jordan_result_received:
                 result = "Maya messages Jordan, but she already has his exact baseline result in her notes."
+            elif self.jordan_vague_replies >= 2:
+                self.jordan_vague_replies += 1
+                result = (
+                    "Maya sends Jordan another follow-up message, but the reply is still "
+                    "vague. Messaging is no longer producing useful baseline details."
+                )
             elif self.jordan_promised_baseline:
                 self.jordan_vague_replies += 1
                 result = (
@@ -214,8 +235,28 @@ class CampusWorld:
             self.energy = max(0, self.energy - 1)
             self.focus = max(0, self.focus - 1)
             self.mood = "social"
-            if self.jordan_result_received:
+            jordan_stage = _jordan_stage(step)
+            if jordan_stage is None:
+                result = (
+                    "Maya looks for Jordan, but he is not available for a real "
+                    "conversation right now."
+                )
+            elif self.jordan_result_received:
                 result = "Maya chats with Jordan, but the useful baseline result is already in her notes."
+            elif jordan_stage == "initial":
+                self.jordan_promised_baseline = True
+                result = (
+                    "Maya talks with Jordan about baseline runs. Jordan is helpful, "
+                    "but says he has not checked the no-retrieval result yet and has "
+                    "to hurry to class."
+                )
+            elif jordan_stage == "distracted":
+                self.jordan_promised_baseline = True
+                self.jordan_vague_replies += 1
+                result = (
+                    "Maya talks with Jordan again. Jordan admits he got distracted and says "
+                    "the no-retrieval run mostly worked, but he does not give the exact failure mode."
+                )
             elif _asks_for_exact_jordan_result(decision.reason):
                 self.jordan_promised_baseline = True
                 self.jordan_result_received = True
@@ -224,17 +265,12 @@ class CampusWorld:
                     "Jordan checks his notes: the no-retrieval run reached progress 100, "
                     "but it never wrote the professor-required baseline comparison."
                 )
-            elif not self.jordan_promised_baseline:
-                self.jordan_promised_baseline = True
-                result = (
-                    "Maya talks with Jordan about baseline runs. Jordan is helpful and says "
-                    "he can check the no-retrieval result later, then hurries to class."
-                )
             else:
+                self.jordan_promised_baseline = True
                 self.jordan_vague_replies += 1
                 result = (
-                    "Maya talks with Jordan again. Jordan admits he got distracted and says "
-                    "the no-retrieval run mostly worked, but he does not give the exact failure mode."
+                    "Maya talks with Jordan, but keeps the question broad. Jordan says "
+                    "the no-retrieval run mostly worked and does not give the exact failure mode."
                 )
         elif action_id == "write_evidence_section":
             self.progress = min(100, self.progress + 6)
@@ -301,7 +337,7 @@ class CampusWorld:
             result = "Maya follows through, though the effect is modest."
 
         self.last_action = decision.action
-        return f"At {self.time_label(step)}, {result} Reason: {decision.reason}"
+        return f"At {self.time_label(step)}, {result}"
 
     def tick(self) -> None:
         if self.hunger >= 8:
@@ -347,23 +383,36 @@ def _body_state(hunger: int, energy: int, focus: int) -> str:
 
 
 def _project_state(progress: int, evidence_section_written: bool) -> str:
-    if progress < 25:
+    if progress < 20:
         return "The project is still in early implementation."
-    if progress < 60:
+    if progress < 45:
         return "The project has a working core, but the evidence is thin."
-    if progress < 90:
-        return "The project mostly works, and the report needs stronger evidence."
     if evidence_section_written:
         return "The implementation feels complete, and the evidence section has a draft."
-    return "The implementation feels complete, but the final evidence section is still blank."
+    return "The implementation feels complete enough to write up, but the final evidence section is still blank."
 
 
-def _jordan_state(jordan_promised_baseline: bool, jordan_result_received: bool) -> str:
+def _jordan_state(
+    jordan_promised_baseline: bool,
+    jordan_result_received: bool,
+    jordan_wait_count: int,
+    jordan_vague_replies: int,
+) -> str:
     if jordan_result_received:
-        return "Maya has Jordan's exact no-retrieval baseline result in her notes."
+        return "Maya has Jordan's baseline result in her notes."
+    if jordan_wait_count >= 2 or jordan_vague_replies >= 2:
+        return "Jordan's follow-up has become a pattern of vague or missing replies, so waiting is no longer useful."
     if jordan_promised_baseline:
-        return "Maya is still waiting on Jordan's exact no-retrieval baseline details."
-    return "Maya does not yet have Jordan's baseline details."
+        return "Maya is still waiting on Jordan's follow-up."
+    return "Maya has not yet coordinated with Jordan."
+
+
+def _jordan_stage(step: int) -> str | None:
+    return {
+        9: "initial",
+        28: "distracted",
+        43: "ready",
+    }.get(step)
 
 
 def _asks_for_exact_jordan_result(reason: str) -> bool:

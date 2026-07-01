@@ -78,7 +78,7 @@ class MemoryStream:
 
     @staticmethod
     def _recency_score(memory: Memory, step: int) -> float:
-        age = max(0, step - memory.last_accessed)
+        age = max(0, step - memory.created_at)
         return math.pow(0.93, age)
 
     @staticmethod

@@ -340,317 +340,153 @@ The next experiment should include information that appears once and must be rem
 
 For the next project iteration, add a memory-dependent task or an evaluation metric that checks whether retrieved memories actually change the chosen action.
 
-## Full Test Runs 006-008: Paper-Faithful Memory Test
+## Live-Only Reset
 
 - Date: 2026-07-01
-- Code tested: working tree after paper-faithful guardrail and snapshot edits
-- Mode: deterministic
-- Full command: `python3 run.py --steps 80 --log logs/runs/run_006_paper_faithful_full.md --memory logs/runs/run_006_paper_faithful_memory.json --summary logs/runs/run_006_paper_faithful_summary.json`
-- No-retrieval command: `python3 run.py --steps 80 --top-k 0 --log logs/runs/run_007_paper_faithful_no_retrieval.md --memory logs/runs/run_007_paper_faithful_no_retrieval_memory.json --summary logs/runs/run_007_paper_faithful_no_retrieval_summary.json`
-- No-reflection command: `python3 run.py --steps 80 --reflection-interval 0 --log logs/runs/run_008_paper_faithful_no_reflection.md --memory logs/runs/run_008_paper_faithful_no_reflection_memory.json --summary logs/runs/run_008_paper_faithful_no_reflection_summary.json`
+- Goal: use only live LLM behavior as experiment evidence
 
-### Implementation Change
+### Why We Reset
 
-The earlier experiment gave the agent too much help through the current snapshot and guardrails. It exposed exact hunger, energy, focus, and progress numbers, and the static goal told the agent too directly what the assignment was supposed to demonstrate.
+The deterministic runs made the system look cleaner than it really was. They were useful while shaping the environment, but they are not good evidence for the assignment because the action policy was hand-authored.
 
-This iteration changed that:
+The project is now being treated as live-LLM-only:
 
-- The snapshot now gives qualitative perception instead of exact internal meters.
-- The static summary no longer tells Maya to prove retrieval and reflection.
-- A professor gives a no-retrieval-baseline requirement once, early in the run.
-- Writing the final evidence section only counts as a baseline comparison if the decision reason mentions the remembered baseline requirement.
-- A later "push ahead or reset" moment tests whether reflection creates reusable self-knowledge beyond direct event recall.
+- The runner defaults to Vercel AI Gateway.
+- The local environment uses `openai/gpt-5`.
+- Importance scoring, action selection, and reflection use live model calls.
+- Live failures should fail loudly instead of falling back to deterministic behavior.
 
-### Results
+### What Broke In The Live Runs
 
-| Metric | Run 006: Full | Run 007: No Retrieval | Run 008: No Reflection |
-| --- | ---: | ---: | ---: |
-| Project progress | 100 | 100 | 100 |
-| Final hunger | 4 | 4 | 4 |
-| Final energy | 6 | 4 | 8 |
-| Final focus | 3 | 9 | 5 |
-| Memory count | 180 | 180 | 164 |
-| Reflection count | 16 | 16 | 0 |
-| Avg. retrieved memories per step | 5.99 | 0.00 | 5.99 |
-| Reflection retrieval count | 170 | 0 | 0 |
-| Baseline requirement retrieval count | 244 | 0 | 122 |
-| Evidence section written | true | false | true |
-| Baseline comparison done | true | false | true |
+The first live social-reflection attempts exposed real weaknesses:
 
-### Action Counts
+- A strong model could ask Jordan for exact details too early unless the world enforced what Jordan actually knew.
+- Maya sometimes waited or messaged Jordan repeatedly instead of using a rare in-person opportunity.
+- Repeated action explanations polluted the memory stream and crowded retrieval.
+- Reflections noticed that Jordan was delayed, but did not always convert that into a practical strategy like asking him directly in person for exact details.
 
-| Action | Run 006: Full | Run 007: No Retrieval | Run 008: No Reflection |
-| --- | ---: | ---: | ---: |
-| `eat_meal` | 13 | 11 | 13 |
-| `organize_notes` | 1 | 13 | 1 |
-| `rest` | 2 | 6 | 2 |
-| `review_notes` | 29 | 23 | 26 |
-| `take_break` | 15 | 7 | 16 |
-| `work_on_project` | 19 | 20 | 21 |
-| `write_evidence_section` | 1 | 0 | 1 |
+These failures are useful. They show that the experiment needs to be believable under live model behavior, not only under a policy tuned to the desired transcript.
 
-### Evidence From The Transcripts
+### Current Fixes
 
-- In Run 006, Professor Lin's requirement appears once at step 6. The full agent repeatedly retrieves it and later chooses `write_evidence_section` because Maya remembers the no-retrieval-baseline requirement.
-- In Run 007, the same professor event appears in the observation stream, but retrieval is disabled. Maya reviews notes repeatedly with the reason that no specific remembered requirement is available, and never chooses `write_evidence_section`.
-- In Run 008, direct retrieval still recovers the professor requirement, so Maya writes the evidence section. But at the "push ahead or reset" moment, the no-reflection agent chooses `work_on_project` while the full agent chooses `take_break` because it retrieves a reflection about reset breaks and focus.
+- Jordan can only provide the exact result after the earlier failed follow-up pattern has happened.
+- The memory stream stores observed outcomes rather than every action reason.
+- Retrieval recency now uses when a memory was created, not when it was last retrieved, so repeated retrieval does not keep old wait/message memories artificially fresh.
+- Repeated failed Jordan waits/messages now become an explicit qualitative cue that waiting is no longer useful.
+- The live reflection prompt now asks the model to synthesize practical lessons from repeated social friction.
+- Deterministic run artifacts were removed from the current project state.
 
-### Interpretation
+### Next Test
 
-This is a stronger match to the paper than the earlier runs. The current state no longer acts like an all-knowing dashboard, and the main success condition depends on the memory stream.
-
-The result is nuanced:
-
-- Retrieval matters for remembering a one-time instruction that disappears from the current snapshot.
-- Reflection matters for turning repeated experience into reusable guidance.
-- Generic project completion is still too weak as an evaluation metric, because every variant reached progress 100.
-
-### Decision
-
-Use Run 006 as the current best sample run and keep Runs 007 and 008 as the main baselines. In the writeup, avoid claiming that the architecture is necessary for simple task completion. The better claim is that the paper's architecture supports memory-dependent obligations, reflection-driven behavior changes, and an inspectable causal trail from past experience to current action.
-
-## Iteration 006-008 Postmortem And Next Test Plan
-
-### Why This Iteration Happened
-
-The earlier version felt too guided. The current snapshot exposed exact hidden state, and the static agent summary told Maya too directly that the project should prove memory, retrieval, and reflection. That made the behavior look more competent than the paper's architecture alone deserved credit for.
-
-This iteration was an attempt to remove that extra help and test a sharper question:
-
-Can the agent use memory retrieval to act on information that appeared once and is no longer visible in the current state?
-
-### How The Iteration Ran
-
-The iteration ran three deterministic 80-step comparisons:
-
-- Full architecture: memory retrieval and reflection enabled.
-- No retrieval: reflection still enabled, but top-k retrieval set to 0.
-- No reflection: retrieval still enabled, but reflection interval set to 0.
-
-The environment included one important early instruction from Professor Lin: the final report should compare the full agent with a no-retrieval baseline. Later, when Maya reached the final evidence section, the environment did not repeat that requirement. Maya had to recover it from memory.
-
-The environment also included a later "push ahead or reset" moment. That was meant to test whether reflection could produce reusable self-knowledge, not just factual recall.
-
-### What Was Good About It
-
-- The snapshot is less leaky. Maya sees qualitative cues like hunger, usable energy, and project stage instead of exact hidden meters.
-- The one-time professor instruction creates a real memory-dependent obligation.
-- The no-retrieval baseline gives a clear contrast: it still completes generic project work, but it fails to write the final evidence section.
-- The no-reflection baseline gives a different contrast: it remembers the explicit professor requirement through retrieval, but lacks the reflection-driven reset-break decision.
-- The transcript makes the causal trail inspectable. We can point to the retrieved memory or reflection that shaped a later action.
-
-The strongest result is not "the full agent finished the project." Every variant did that. The stronger result is that the full agent remembered and used a past requirement that the no-retrieval agent could not access.
-
-### What Was Bad Or Still Weak
-
-- This is still not strong evidence of believable human behavior. It is stronger evidence of the memory architecture working.
-- The deterministic policy has hand-authored decision logic, so the run is useful for testing architecture but not enough for a believability claim.
-- The world is still solitary. The paper's most compelling behavior comes from social coordination, information spreading, and agents remembering interactions with each other.
-- The metric "project progress reached 100" is too easy and should not be used as the main success claim.
-- The baseline requirement retrieval count is inflated by repeated retrieval of the same important memory. That shows persistence, but not necessarily natural behavior.
-- Maya's actions are still bounded by a small action list, so some choices are believable only at the coarse level.
-
-The honest claim after this iteration is:
-
-The sandbox now gives good evidence that memory retrieval and reflection can affect later behavior in an inspectable way. It does not yet give strong evidence that the agent is broadly believable as a human.
-
-### What We Should Test Next
-
-The next experiment should test believability through a small social coordination task, not by adding a large world.
-
-Recommended next setup:
-
-- Add one more student agent, Jordan.
-- Professor Lin gives Maya a requirement once: compare the full agent with a no-retrieval baseline.
-- Jordan separately has useful baseline information or promises to run the no-retrieval comparison.
-- Maya and Jordan have a chance to meet later.
-- Maya must remember to ask Jordan for the baseline result.
-- The final evidence section only counts as complete if Maya uses both the professor's requirement and Jordan's transferred information.
-
-This would test a more paper-like behavior:
-
-- Remembering a social obligation.
-- Coordinating with another agent.
-- Transferring information through conversation.
-- Using remembered conversation later in a written task.
-
-### Proposed Baselines For The Next Test
+Rerun the three-way comparison with GPT-5:
 
 | Run | Purpose |
 | --- | --- |
-| Full two-agent system | Tests whether memory, reflection, and conversation support coordination. |
-| No retrieval | Tests whether Maya fails to remember the professor instruction or Jordan's baseline information. |
-| No reflection | Tests whether Maya remembers facts but fails to adapt strategy after friction. |
-| No social exchange | Tests whether the second agent actually matters, not just the extra scripted event. |
+| Full live system | Tests whether retrieval plus reflection changes behavior. |
+| No retrieval | Tests whether memories and reflections cannot influence action when retrieval is disabled. |
+| No reflection | Tests whether direct memories are weaker than higher-level social lessons. |
 
-### Metrics For The Next Test
+The result we want is not a perfect transcript. The result we want is an honest live-model transcript where any claim about retrieval or reflection can be traced to actual retrieved memories and reflections.
 
-Better metrics than project progress:
-
-- Did Maya attend or remember the relevant conversation?
-- Did Jordan's information enter Maya's memory stream?
-- Did Maya later retrieve Jordan's information?
-- Did the final evidence section include both the professor requirement and Jordan's baseline result?
-- Did reflection change a later action that was not directly forced by the current observation?
-- Does the transcript show a believable reason for the coordination, or only a scripted handoff?
-
-### Next Decision
-
-Do not add a large multi-agent world. Add exactly one more agent and one focused social coordination requirement. The goal should be to show one small version of the paper's social believability argument while keeping the run easy to inspect.
-
-## Full Test Runs 009-011: Social Reflection With Jordan
+## Full Test Runs 012-014: GPT-5 Social Reflection
 
 - Date: 2026-07-01
-- Code tested: working tree after adding lightweight Jordan interactions
-- Mode: deterministic
-- Full command: `python3 run.py --steps 80 --log logs/runs/run_009_social_reflection_full.md --memory logs/runs/run_009_social_reflection_memory.json --summary logs/runs/run_009_social_reflection_summary.json`
-- No-retrieval command: `python3 run.py --steps 80 --top-k 0 --log logs/runs/run_010_social_reflection_no_retrieval.md --memory logs/runs/run_010_social_reflection_no_retrieval_memory.json --summary logs/runs/run_010_social_reflection_no_retrieval_summary.json`
-- No-reflection command: `python3 run.py --steps 80 --reflection-interval 0 --log logs/runs/run_011_social_reflection_no_reflection.md --memory logs/runs/run_011_social_reflection_no_reflection_memory.json --summary logs/runs/run_011_social_reflection_no_reflection_summary.json`
+- Mode: live Vercel AI Gateway with `openai/gpt-5`
+- Full command: `python3 run.py --steps 100 --llm gateway --log logs/runs/run_012_gpt5_social_reflection_full.md --memory logs/runs/run_012_gpt5_social_reflection_memory.json --summary logs/runs/run_012_gpt5_social_reflection_summary.json`
+- No-retrieval command: `python3 run.py --steps 100 --llm gateway --top-k 0 --log logs/runs/run_013_gpt5_social_reflection_no_retrieval.md --memory logs/runs/run_013_gpt5_social_reflection_no_retrieval_memory.json --summary logs/runs/run_013_gpt5_social_reflection_no_retrieval_summary.json`
+- No-reflection command: `python3 run.py --steps 100 --llm gateway --reflection-interval 0 --log logs/runs/run_014_gpt5_social_reflection_no_reflection.md --memory logs/runs/run_014_gpt5_social_reflection_no_reflection_memory.json --summary logs/runs/run_014_gpt5_social_reflection_no_reflection_summary.json`
 
-### Experiment Idea
+### What Failed Before The Runs Completed
 
-This iteration tested a clearer reflection effect: Maya should learn something about Jordan's behavior.
+Switching to GPT-5 exposed several integration issues:
 
-Jordan is helpful, but vague follow-through fails. If Maya asks generally, he promises to help or says the baseline "mostly worked." If she asks in person for the exact no-retrieval result and failure mode, he gives the useful result.
+- GPT-5 rejected the importance-scoring call because the requested output budget was below its minimum.
+- GPT-5 sometimes returned reflection importance as labels like `"high"` instead of numbers.
+- GPT-5 returned empty action content until the request used `max_completion_tokens` and minimal reasoning effort.
+- The Gateway produced a transient retryable connection reset before one baseline.
 
-The important design choice is that the action list does not include a special "ask Jordan specific question" button. Maya only has generic social actions like `talk_with_jordan`, `send_message`, and `wait_for_reply`. The specificity has to come from retrieved memory and the decision reason.
+### What We Changed
+
+- Raised the importance output budget.
+- Added parsing for numeric and label-based importance values.
+- Used GPT-5-specific request fields: `max_completion_tokens` and `reasoning_effort: minimal`.
+- Added retry handling for transient live API failures.
+- Kept live failures loud: there is still no deterministic fallback.
 
 ### Results
 
-| Metric | Run 009: Full | Run 010: No Retrieval | Run 011: No Reflection |
+| Metric | Run 012: Full | Run 013: No Retrieval | Run 014: No Reflection |
 | --- | ---: | ---: | ---: |
 | Project progress | 100 | 100 | 100 |
-| Reflection memories | 16 | 16 | 0 |
+| Reflection memories | 25 | 24 | 0 |
 | Avg. retrieved memories per step | 5.99 | 0.00 | 5.99 |
-| Reflection retrieval count | 30 | 0 | 0 |
-| Jordan pattern reflections | 1 | 2 | 0 |
-| Jordan result retrieved | 73 | 0 | 0 |
+| Reflection retrieval count | 106 | 0 | 0 |
+| Baseline requirement retrieval count | 188 | 0 | 27 |
+| Jordan result retrieval count | 58 | 0 | 0 |
+| Jordan pattern reflections | 5 | 3 | 0 |
 | Jordan result received | true | false | false |
 | Jordan result used | true | false | false |
-| Evidence section written | true | false | false |
+| Evidence section written | true | true | true |
 | Baseline comparison done | true | false | false |
-| Jordan conversations | 3 | 3 | 3 |
-| Jordan vague replies | 1 | 2 | 2 |
+| Jordan conversations | 6 | 3 | 6 |
+| Evidence-section actions | 23 | 31 | 24 |
 
 ### Key Transcript Moment
 
-In the full run, Maya first talks with Jordan generally. Jordan promises to help. Later, Maya waits for the message and nothing useful arrives. Later still, Jordan gives a vague answer: the no-retrieval run "mostly worked," but he does not provide the exact failure mode.
+In the full run, GPT-5 creates a reflection at step 20:
 
-At step 40, reflection creates the important social inference:
+> Repeated friction: attempts to get Jordan's baseline details via quick catch-ups and passive phone checks keep failing; practical lesson - schedule a specific meeting time and ask in person for the exact no-retrieval results or assign who will run them by when.
 
-> Jordan seems helpful but vague follow-through fails; Maya gets useful baseline information only by asking him in person for the exact no-retrieval result and failure mode.
+At step 43, Jordan is present. The full run retrieves that reflection and chooses `talk_with_jordan`. Maya asks for the exact no-retrieval result and failure mode. Jordan gives the useful result: the no-retrieval run reached progress 100, but it never wrote the professor-required baseline comparison.
 
-At step 43, Jordan is available. The full run retrieves that reflection and chooses `talk_with_jordan` with a specific reason. Jordan then provides the useful result: the no-retrieval run reached progress 100, but it never wrote the professor-required baseline comparison.
-
-At step 44, Maya writes the evidence section using both Professor Lin's requirement and Jordan's exact result.
+At step 44, Maya writes the evidence section using both Professor Lin's comparison requirement and Jordan's exact no-retrieval baseline result.
 
 ### Baseline Behavior
 
-The no-retrieval run actually generated Jordan-pattern reflections, because reflection still sees recent memories. But with retrieval disabled, Maya could not bring those reflections back into the decision at step 43. She talked with Jordan generally and got another vague answer.
+The no-retrieval run still generates Jordan-pattern reflections because reflection can inspect recent memories. But with retrieval disabled, those reflections never enter the decision prompt. Maya talks with Jordan and writes many evidence sections, but never receives or uses Jordan's exact result. The final evidence section remains general.
 
-The no-reflection run retrieved the earlier Jordan conversations and remembered the professor's requirement, but it never formed the higher-level social model. At step 43 it also talked with Jordan generally and got another vague answer.
+The no-reflection run retrieves direct memories and talks with Jordan several times, but it never creates the higher-level lesson about how to handle Jordan. It also writes general evidence sections and never completes the valid baseline comparison.
 
-This is the strongest reflection evidence so far. The difference is not that the full agent had a special action. All three runs used `talk_with_jordan` three times. The difference is that only the full agent retrieved a reflection that changed the content of the conversation.
+### What Worked
 
-### What Was Good
+- The final evidence claim is now based on live GPT-5 behavior.
+- The full run has an inspectable causal chain from failed social interactions to reflection, from reflection to retrieval, from retrieval to a changed Jordan conversation, and from that conversation to the final evidence section.
+- The baselines are meaningful: all runs complete generic project progress and write something, but only the full run completes the specific memory/reflection-dependent comparison.
 
-- Reflection now represents a social pattern, not just a task reminder.
-- The effect is easy to inspect in the transcript.
-- The full and baseline runs diverge at a natural human moment: how to ask a helpful but distracted collaborator for information.
-- The result is closer to the paper's believability argument because it involves social memory and coordination.
+### What Still Failed Or Stayed Weak
 
-### What Is Still Weak
-
-- Jordan is still a lightweight world actor, not a full generative agent with his own planner and memory retrieval.
-- The deterministic policy is still hand-authored, so this proves the architecture and experiment shape more than it proves open-ended human believability.
-- The retrieval query needed a small improvement to surface social reflections when Jordan was salient. That is defensible, but it means retrieval design matters a lot.
-- The world still has scripted opportunities for Jordan, rather than emergent meetings.
+- GPT-5 repeatedly chose `write_evidence_section` after the evidence section already existed.
+- The world still needs a terminal state or a clearer "done for the day" action.
+- Jordan is still a lightweight world actor, not a full second generative agent with his own memory stream.
+- The action schema remains coarse; the exact social content lives in the model's reason and the environment outcome.
 
 ### Decision
 
-This is a better next sample than the earlier one-agent memory test. The honest claim is:
+Use Runs 012-014 as the current best evidence. The honest claim is:
 
-The sandbox now demonstrates a small social-reflection effect: reflection can turn repeated interactions into a reusable model of another person's behavior, and retrieval of that model can change a later conversation.
+The GPT-5 live runs show that reflection and retrieval can matter for a specific social-memory task. The full agent turns repeated failed coordination with Jordan into a reusable strategy, retrieves that strategy when Jordan appears, obtains the missing baseline result, and writes the valid evidence section. The no-retrieval and no-reflection baselines complete generic work but fail that specific comparison.
 
-## Reflection After Runs 009-011: What This Iteration Taught Us
+## Failure Ledger Across Iterations
 
-- Date: 2026-07-01
-- Focus: whether the Jordan setup makes reflection feel important, not just present
+This is the quick-read version of the project history. Each iteration should be judged by what failed, what changed because of that failure, and what weakness remained.
 
-### The Shift In This Iteration
+| Iteration | What We Tried | What Failed | What We Changed | What Still Needed Work |
+| --- | --- | --- | --- | --- |
+| Run 001 | First 80-step live Gateway run with open-ended actions. | The model reasoned about eating/resting, but output vague movement actions. The environment treated those as weak movement, so Maya ended depleted and project progress stayed low. | Added a structured action schema so the model had to choose executable actions. | The agent could now act, but still pushed through low energy/focus too often. |
+| Run 002 | Live Gateway run with structured actions. | Project progress improved, but Maya still overworked while depleted and never chose breaks naturally. Some movement actions still meant "go work/eat/rest" in the model's prose. | Added needs-aware grounding and guardrails for hunger, energy, focus, and movement-action repair. | The run became competent, but competence alone did not prove reflection or retrieval mattered. |
+| Run 003 | Live Gateway run with structured actions plus guardrails. | Maya reached progress 100, but the task became too easy. The agent kept acting after completion, and we did not yet know whether reflection caused useful behavior. | Added no-reflection and no-retrieval ablations. | Needed better evidence than project progress. |
+| Run 004 | Live no-reflection ablation. | The no-reflection agent still completed the project. This weakened any claim that reflection was required for simple task completion. | Reframed reflection as inspectability and higher-level self-explanation, not raw completion. | Needed a task where reflection changes a later action, not just a transcript explanation. |
+| Run 005 | Live no-retrieval baseline. | The no-retrieval agent still completed the project because current state, observations, and action schema were too informative. | Planned a memory-dependent task where a one-time requirement must matter later. | Needed a cleaner test where retrieval and reflection affect behavior, not only logs. |
+| Paper-faithful memory redesign | Reduced leaky state, added one-time professor requirement, and added baseline-comparison success metrics. | Deterministic development runs looked too clean because the policy was hand-authored. They were useful for shaping the environment but not acceptable as final evidence. | Removed deterministic runs from submission artifacts and reset the project to live-LLM-only evidence. | Needed to rerun the core comparison with real model behavior. |
+| Jordan social-reflection redesign | Added lightweight Jordan coordination so reflection could form a social lesson. | The deterministic version produced the desired causal story, but live runs exposed that the real model could ask too early, over-wait, miss in-person chances, or bury reflections under repeated messages. | Enforced what Jordan knows by stage, removed action rationales from memory, made recency based on memory creation, added qualitative failed-follow-up cues, and sharpened the live reflection prompt. | Needed fresh GPT-5 full/no-retrieval/no-reflection runs. |
+| Runs 012-014 | Re-ran the Jordan social-reflection experiment with live GPT-5. | GPT-5 needed request/parsing fixes, and after success it still repeated evidence-writing too often. | Added GPT-5 request handling, importance-label parsing, and live retry handling. | Add a terminal "done for the day" state and make Jordan a fuller second agent if continuing. |
 
-This iteration moved the project from "Maya remembers an instruction" to "Maya forms a small interpretation of another person's behavior."
+### Current Honest Status
 
-That matters because the paper's most interesting claim is not that an agent can store facts. The stronger claim is that memories can accumulate into higher-level beliefs, and those beliefs can shape later behavior. The Jordan experiment is our clearest version of that so far.
+The project is stronger now because the failures changed the design instead of being hidden. The current state is not "we have proved the paper." The current state is:
 
-The useful reflection was not a direct task note like "write the evidence section." It was a social model:
-
-> Jordan is helpful, but vague follow-through fails; ask him in person for the exact result and failure mode.
-
-That feels closer to human behavior. People often do not just remember what someone said. They remember how that person tends to act, then adjust how they coordinate with them.
-
-### Why This Is Better Evidence
-
-The best part of the result is that all three runs had the same visible social opportunity. Maya talked with Jordan three times in the full run, the no-retrieval run, and the no-reflection run.
-
-So the difference was not "the full run got more chances." The difference was what Maya brought into the same chance:
-
-- Full run: retrieved the Jordan reflection, asked a specific question, got the useful baseline result, and wrote the evidence section.
-- No retrieval: generated some useful reflections, but could not bring them back at the right moment.
-- No reflection: remembered earlier Jordan interactions, but did not compress them into a reusable social lesson.
-
-That is a cleaner argument than project progress alone. Project progress reached 100 in every run, which means progress is not the right evidence. The better evidence is the causal trail:
-
-1. repeated vague Jordan interactions,
-2. reflection creates a higher-level social inference,
-3. retrieval surfaces that inference when Jordan appears again,
-4. Maya changes the content of the conversation,
-5. the final written evidence becomes possible.
-
-### What Still Feels Artificial
-
-We should be honest that this is still not a full proof of believable human behavior.
-
-Jordan is a lightweight world actor, not a second generative agent with his own memory stream, needs, plans, and retrieval. The environment creates the moments where Jordan appears. The deterministic policy also contains hand-authored logic for recognizing when the Jordan reflection matters.
-
-So the current claim should stay narrow:
-
-This experiment shows that reflection can create a useful social abstraction, and retrieval of that abstraction can change later behavior.
-
-It does not yet show that believable multi-agent social life emerges naturally from the system.
-
-### What We Learned About Reflection
-
-Reflection is most convincing when the current observation is not enough by itself.
-
-If the observation says, "Professor Lin requires a baseline comparison," then direct memory retrieval can solve the task. Reflection is helpful but not necessary.
-
-If the observation says, "Jordan is nearby," the right action depends on a pattern across time. Maya has to know that general check-ins with Jordan have failed before. That is where reflection becomes more visibly important.
-
-This is probably the design rule for future experiments:
-
-Reflection should matter when the agent needs a compressed lesson from multiple past events, not when it only needs one remembered fact.
-
-### What We Should Test Next
-
-The next step should make Jordan more independent without making the whole project too large.
-
-Recommended next iteration:
-
-- Give Jordan his own small memory stream.
-- Let Jordan remember being asked, getting distracted, and later finding the baseline result.
-- Let Maya and Jordan exchange actual message content rather than using only outcome text.
-- Keep the same three baselines: full, no retrieval, no reflection.
-- Add a "no Jordan memory" baseline if Jordan becomes a real agent.
-
-The key question should be:
-
-Can Maya and Jordan coordinate through their own remembered histories, rather than through a single scripted world state?
-
-### Current Best Claim
-
-Our best claim after this iteration is:
-
-The sandbox now gives a small, inspectable example of the paper's memory-reflection loop. Reflection turns repeated experience into a reusable belief, retrieval brings that belief back in context, and the agent's later social behavior changes in a way the baselines do not reproduce.
-
-That is not full human believability yet. But it is finally evidence for why reflection matters.
+1. The architecture is implemented.
+2. Early live runs showed why action grounding matters.
+3. Baselines showed that simple completion is a weak metric.
+4. Deterministic social runs were removed as evidence.
+5. Fresh GPT-5 live runs now provide the current best evidence, while also exposing the need for a terminal state and a fuller Jordan agent.

@@ -17,9 +17,9 @@ def parse_args() -> argparse.Namespace:
     parser.add_argument("--steps", type=int, default=80, help="Number of simulation steps to run.")
     parser.add_argument(
         "--llm",
-        choices=["deterministic", "openai", "gateway"],
-        default="deterministic",
-        help="LLM backend. deterministic requires no API key; gateway uses Vercel AI Gateway.",
+        choices=["openai", "gateway"],
+        default="gateway",
+        help="LLM backend. gateway uses Vercel AI Gateway.",
     )
     parser.add_argument("--seed", type=int, default=7, help="Random seed for environment observations.")
     parser.add_argument(
@@ -118,9 +118,8 @@ def build_checkpoint_callback(args: argparse.Namespace):
             write_memory_json(args.memory, agent)
             write_summary_json(args.summary, agent=agent, world=world, logs=logs)
 
-        if args.llm != "deterministic":
-            status = "checkpoint saved" if should_checkpoint else "checkpoint skipped"
-            print(f"Completed step {step}/{total_steps} ({status})", flush=True)
+        status = "checkpoint saved" if should_checkpoint else "checkpoint skipped"
+        print(f"Completed step {step}/{total_steps} ({status})", flush=True)
 
     return checkpoint
 

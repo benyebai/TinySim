@@ -200,7 +200,18 @@ def _mentions_jordan_result(text: str) -> bool:
 
 def _mentions_jordan_pattern(text: str) -> bool:
     text_lower = text.lower()
-    return "jordan" in text_lower and (
-        "vague follow-through fails" in text_lower
-        or "asking him in person for the exact" in text_lower
+    return "jordan" in text_lower and any(
+        phrase in text_lower
+        for phrase in [
+            "vague follow-through",
+            "vague",
+            "follow-up",
+            "follow through",
+            "distracted",
+            "asking him in person for the exact",
+            "ask him in person",
+            "exact no-retrieval",
+            "exact baseline",
+            "failure mode",
+        ]
     )

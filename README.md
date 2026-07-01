@@ -15,7 +15,7 @@ The simulation follows Maya Chen, a student researcher working through a day on 
 5. Stores the action outcome as memory.
 6. Periodically reflects on recent experience and stores those reflections as memory.
 
-The default mode is deterministic, so it runs from a clean clone without an API key. OpenAI and Vercel AI Gateway modes are included for live LLM calls.
+The default mode uses a live LLM through Vercel AI Gateway. This project intentionally treats live model behavior as the evidence; deterministic development runs were removed from the submission artifacts.
 
 ## Run It
 
@@ -37,7 +37,7 @@ Optional OpenAI mode:
 
 ```bash
 OPENAI_API_KEY=your_key_here
-OPENAI_MODEL=gpt-4.1-mini
+OPENAI_MODEL=gpt-5
 ```
 
 2. Run:
@@ -49,7 +49,7 @@ python3 run.py --steps 80 --llm openai
 You can also override the model from the terminal:
 
 ```bash
-OPENAI_MODEL=gpt-4.1-mini OPENAI_API_KEY=your_key_here python3 run.py --llm openai
+OPENAI_MODEL=gpt-5 OPENAI_API_KEY=your_key_here python3 run.py --llm openai
 ```
 
 Vercel AI Gateway mode:
@@ -58,9 +58,9 @@ Vercel AI Gateway mode:
 
 ```bash
 AI_GATEWAY_API_KEY=your_vercel_ai_gateway_key_here
-AI_GATEWAY_MODEL=openai/gpt-4.1-mini
+AI_GATEWAY_MODEL=openai/gpt-5
 AI_GATEWAY_BASE_URL=https://ai-gateway.vercel.sh/v1
-LIVE_LLM_IMPORTANCE=false
+LIVE_LLM_IMPORTANCE=true
 ```
 
 2. Run:
@@ -69,7 +69,7 @@ LIVE_LLM_IMPORTANCE=false
 python3 run.py --steps 80 --llm gateway
 ```
 
-Live API runs print progress after each step. `LIVE_LLM_IMPORTANCE=false` keeps the run much faster and cheaper by using local importance scoring while still using the API for decisions and reflections.
+Live API runs print progress after each step. Importance scoring, action selection, and reflection are all live-model calls by default.
 
 You can checkpoint less often with:
 
@@ -91,28 +91,32 @@ python3 run.py --steps 80 --llm gateway --top-k 0
 
 ## Current Sample Run
 
-The current included sample run uses deterministic mode for 80 steps with a small social-reflection setup:
+The current included sample run is a live GPT-5 Gateway run:
 
-- The snapshot uses qualitative perception instead of exact hidden numbers.
-- A professor gives a requirement once early in the run.
-- Jordan is helpful but vague unless Maya asks him for exact baseline details.
-- The final evidence section succeeds only if Maya uses both Professor Lin's requirement and Jordan's exact result.
+- `logs/runs/run_012_gpt5_social_reflection_full.md`
+- `logs/runs/run_012_gpt5_social_reflection_memory.json`
+- `logs/runs/run_012_gpt5_social_reflection_summary.json`
+
+The setup tests whether memory retrieval and reflection help Maya coordinate with Jordan. Jordan is helpful but vague: broad check-ins and messages do not produce the exact no-retrieval baseline result. A useful result appears only when Maya asks Jordan in person for the exact result and failure mode.
+
+The full GPT-5 run produced the intended causal chain:
+
+1. Maya had vague or failed Jordan interactions.
+2. Reflection synthesized a practical social lesson: ask in person for exact baseline details.
+3. Retrieval surfaced that reflection when Jordan appeared again.
+4. Maya asked Jordan for the exact no-retrieval result and failure mode.
+5. Maya wrote the evidence section using Professor Lin's requirement and Jordan's exact result.
 
 Summary:
 
 ```json
 {
-  "steps": 80,
-  "final_location": "Dorm",
-  "final_hunger": 4,
-  "final_energy": 6,
-  "final_focus": 4,
+  "steps": 100,
   "final_project_progress": 100,
-  "memory_count": 180,
-  "reflection_count": 16,
+  "reflection_count": 25,
   "avg_retrieved_memories": 5.99,
-  "baseline_requirement_retrieval_count": 391,
-  "jordan_pattern_reflection_count": 1,
+  "reflection_retrieval_count": 106,
+  "jordan_pattern_reflection_count": 5,
   "jordan_result_received": true,
   "jordan_result_used": true,
   "evidence_section_written": true,
@@ -120,11 +124,7 @@ Summary:
 }
 ```
 
-Artifacts:
-
-- `logs/runs/run_009_social_reflection_full.md`
-- `logs/runs/run_009_social_reflection_memory.json`
-- `logs/runs/run_009_social_reflection_summary.json`
+The run is not perfect. After the evidence section becomes available, GPT-5 sometimes keeps choosing `write_evidence_section` repeatedly. I treat that as a remaining environment-design weakness: the simulation needs a stronger terminal or "done for the day" state.
 
 The transcript shows retrieval scores for each selected memory:
 
@@ -136,29 +136,29 @@ Each retrieved memory includes the total score plus the component scores.
 
 ## Baseline Runs
 
-I also ran 80-step deterministic baselines with retrieval disabled and reflection disabled.
+The final comparison uses live GPT-5 runs only.
 
-| Metric | Full System | No Retrieval | No Reflection |
+| Metric | Full | No Retrieval | No Reflection |
 | --- | ---: | ---: | ---: |
 | Project progress | 100 | 100 | 100 |
-| Final hunger | 4 | 8 | 8 |
-| Final energy | 6 | 3 | 3 |
-| Final focus | 4 | 4 | 4 |
-| Reflection memories | 16 | 16 | 0 |
+| Reflection memories | 25 | 24 | 0 |
 | Avg. retrieved memories per step | 5.99 | 0.00 | 5.99 |
-| Jordan pattern reflections | 1 | 2 | 0 |
+| Reflection retrieval count | 106 | 0 | 0 |
+| Jordan pattern reflections | 5 | 3 | 0 |
 | Jordan result received | true | false | false |
 | Jordan result used | true | false | false |
-| Evidence section written | true | false | false |
+| Evidence section written | true | true | true |
 | Baseline comparison done | true | false | false |
-| `talk_with_jordan` actions | 3 | 3 | 3 |
-| `write_evidence_section` actions | 1 | 0 | 0 |
+| `talk_with_jordan` actions | 6 | 3 | 6 |
+| `write_evidence_section` actions | 23 | 31 | 24 |
 
-The strongest difference is social. In the full run, Maya first asks Jordan generally, waits for his message, and then gets a vague answer. Reflection turns those interactions into a reusable model: Jordan is helpful, but vague follow-through fails, so Maya should ask him in person for the exact no-retrieval result and failure mode.
+Artifacts:
 
-At the next Jordan opportunity, the full run retrieves that reflection, asks differently, gets the exact baseline result, and writes the evidence section. The no-retrieval and no-reflection runs also talk with Jordan three times, but they keep the conversation vague and never get the useful result.
+- Full: `logs/runs/run_012_gpt5_social_reflection_full.md`
+- No retrieval: `logs/runs/run_013_gpt5_social_reflection_no_retrieval.md`
+- No reflection: `logs/runs/run_014_gpt5_social_reflection_no_reflection.md`
 
-This makes the result more honest. Project progress alone is still too easy; the better evidence is that reflection changes the content of a later social interaction.
+The baselines are useful because they still complete the generic project and still write something, but they fail the specific social-memory condition. Without retrieval, reflections are generated but never brought back into the action prompt. Without reflection, direct memories are not enough to produce the higher-level Jordan strategy. In both baselines, Maya writes a general evidence section rather than a valid baseline comparison using Jordan's exact result.
 
 ## Architecture
 
@@ -168,7 +168,7 @@ Important files:
 - `generative_agent_sandbox/models.py`: structured action schema and run data models
 - `generative_agent_sandbox/agent.py`: observe, retrieve, act, reflect loop
 - `generative_agent_sandbox/environment.py`: small campus world
-- `generative_agent_sandbox/llm.py`: deterministic, OpenAI, and Vercel AI Gateway backends
+- `generative_agent_sandbox/llm.py`: OpenAI and Vercel AI Gateway live LLM backends
 - `generative_agent_sandbox/simulation.py`: run orchestration and log writing
 
 ## What I Kept From The Paper
@@ -208,7 +208,7 @@ The biggest surprise was how easy it was to accidentally make the environment to
 
 The second surprise was that retrieval and reflection help in different ways. Retrieval was enough to recover the professor's explicit no-retrieval-baseline requirement. Reflection mattered when the agent had to generalize from prior experience, such as choosing a reset break after noticing that focus depends on managing basic needs.
 
-The latest run made reflection's value clearer. Maya did not just remember a fact; she formed a small social model of Jordan: helpful, but vague unless asked directly. Retrieving that reflection changed a later conversation and produced evidence the baselines missed.
+Switching back to live LLMs made the experiment less clean but more honest. The live model exposed that the environment and retrieval setup were too fragile: Maya could over-wait for Jordan, miss a one-time in-person opportunity, or bury useful reflections under repeated action memories.
 
 The baselines also changed the claim. The project should not say that retrieval and reflection are required for all task completion. It should say that the paper's architecture creates a readable memory trail, supports obligations that depend on past events, and lets reflections become reusable knowledge.
 
@@ -220,7 +220,7 @@ Useful next steps:
 - Add a final interview mode to ask Maya what she remembers and what she learned.
 - Add a terminal "done for the day" state after the project reaches 100.
 - Add a stricter evaluation metric for whether retrieved memories actually change decisions.
-- Run the same full/no-retrieval/no-reflection comparison with a live LLM backend.
+- Finish the full/no-retrieval/no-reflection comparison with GPT-5 live runs.
 - Make OpenAI mode generate richer final interviews while preserving JSON output.
 
 ## Paper Notes
