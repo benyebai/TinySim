@@ -57,8 +57,13 @@ class GenerativeAgent:
 
         query = (
             f"{snapshot.describe()} Current observation: {observation_text}. "
-            "What past experience should influence Maya's next action?"
+            "What past experience or reflection should influence Maya's next action?"
         )
+        if "jordan" in observation_text.lower() or "jordan" in snapshot.describe().lower():
+            query += (
+                " Look for memories or reflections about Jordan's follow-through, "
+                "vague answers, exact baseline details, and how Maya should coordinate with him."
+            )
         retrieved = self.memory.retrieve(query, step=step, top_k=self.top_k)
 
         decision = self.llm.choose_action(

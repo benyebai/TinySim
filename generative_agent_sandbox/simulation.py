@@ -129,6 +129,17 @@ def write_summary_json(path: Path, *, agent: GenerativeAgent, world: CampusWorld
         for result in entry.retrieved
         if _mentions_baseline_requirement(result.memory.text)
     )
+    jordan_result_retrieval_count = sum(
+        1
+        for entry in logs
+        for result in entry.retrieved
+        if _mentions_jordan_result(result.memory.text)
+    )
+    jordan_pattern_reflection_count = sum(
+        1
+        for memory in agent.memory.memories
+        if memory.kind == "reflection" and _mentions_jordan_pattern(memory.text)
+    )
     path.write_text(
         json.dumps(
             {
@@ -147,8 +158,14 @@ def write_summary_json(path: Path, *, agent: GenerativeAgent, world: CampusWorld
                 ),
                 "reflection_retrieval_count": reflection_retrieval_count,
                 "baseline_requirement_retrieval_count": baseline_requirement_retrieval_count,
+                "jordan_result_retrieval_count": jordan_result_retrieval_count,
+                "jordan_pattern_reflection_count": jordan_pattern_reflection_count,
                 "evidence_section_written": world.evidence_section_written,
                 "baseline_comparison_done": world.baseline_comparison_done,
+                "jordan_result_received": world.jordan_result_received,
+                "jordan_result_used": world.jordan_result_used,
+                "jordan_wait_count": world.jordan_wait_count,
+                "jordan_vague_replies": world.jordan_vague_replies,
                 "action_counts": dict(sorted(action_counts.items())),
             },
             indent=2,
@@ -169,4 +186,21 @@ def _mentions_baseline_requirement(text: str) -> bool:
             "compare the full",
             "compare full",
         ]
+    )
+
+
+def _mentions_jordan_result(text: str) -> bool:
+    text_lower = text.lower()
+    return "jordan" in text_lower and (
+        "no-retrieval run reached progress 100" in text_lower
+        or "never wrote the professor-required baseline comparison" in text_lower
+        or "using professor lin's comparison requirement and jordan's exact" in text_lower
+    )
+
+
+def _mentions_jordan_pattern(text: str) -> bool:
+    text_lower = text.lower()
+    return "jordan" in text_lower and (
+        "vague follow-through fails" in text_lower
+        or "asking him in person for the exact" in text_lower
     )

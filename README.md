@@ -91,11 +91,12 @@ python3 run.py --steps 80 --llm gateway --top-k 0
 
 ## Current Sample Run
 
-The current included sample run uses deterministic mode for 80 steps with a more paper-faithful setup:
+The current included sample run uses deterministic mode for 80 steps with a small social-reflection setup:
 
 - The snapshot uses qualitative perception instead of exact hidden numbers.
 - A professor gives a requirement once early in the run.
-- The final evidence section succeeds only if Maya remembers the no-retrieval baseline requirement.
+- Jordan is helpful but vague unless Maya asks him for exact baseline details.
+- The final evidence section succeeds only if Maya uses both Professor Lin's requirement and Jordan's exact result.
 
 Summary:
 
@@ -105,12 +106,15 @@ Summary:
   "final_location": "Dorm",
   "final_hunger": 4,
   "final_energy": 6,
-  "final_focus": 3,
+  "final_focus": 4,
   "final_project_progress": 100,
   "memory_count": 180,
   "reflection_count": 16,
   "avg_retrieved_memories": 5.99,
-  "baseline_requirement_retrieval_count": 244,
+  "baseline_requirement_retrieval_count": 391,
+  "jordan_pattern_reflection_count": 1,
+  "jordan_result_received": true,
+  "jordan_result_used": true,
   "evidence_section_written": true,
   "baseline_comparison_done": true
 }
@@ -118,9 +122,9 @@ Summary:
 
 Artifacts:
 
-- `logs/runs/run_006_paper_faithful_full.md`
-- `logs/runs/run_006_paper_faithful_memory.json`
-- `logs/runs/run_006_paper_faithful_summary.json`
+- `logs/runs/run_009_social_reflection_full.md`
+- `logs/runs/run_009_social_reflection_memory.json`
+- `logs/runs/run_009_social_reflection_summary.json`
 
 The transcript shows retrieval scores for each selected memory:
 
@@ -137,22 +141,24 @@ I also ran 80-step deterministic baselines with retrieval disabled and reflectio
 | Metric | Full System | No Retrieval | No Reflection |
 | --- | ---: | ---: | ---: |
 | Project progress | 100 | 100 | 100 |
-| Final hunger | 4 | 4 | 4 |
-| Final energy | 6 | 4 | 8 |
-| Final focus | 3 | 9 | 5 |
+| Final hunger | 4 | 8 | 8 |
+| Final energy | 6 | 3 | 3 |
+| Final focus | 4 | 4 | 4 |
 | Reflection memories | 16 | 16 | 0 |
 | Avg. retrieved memories per step | 5.99 | 0.00 | 5.99 |
-| Baseline requirement retrievals | 244 | 0 | 122 |
-| Evidence section written | true | false | true |
-| Baseline comparison done | true | false | true |
-| `take_break` actions | 15 | 7 | 16 |
-| `write_evidence_section` actions | 1 | 0 | 1 |
+| Jordan pattern reflections | 1 | 2 | 0 |
+| Jordan result received | true | false | false |
+| Jordan result used | true | false | false |
+| Evidence section written | true | false | false |
+| Baseline comparison done | true | false | false |
+| `talk_with_jordan` actions | 3 | 3 | 3 |
+| `write_evidence_section` actions | 1 | 0 | 0 |
 
-The no-retrieval baseline still completed the generic project, but it missed the one-time professor requirement and never wrote the final evidence section. That is the cleaner test: the paper's retrieval mechanism matters when later behavior depends on a past event that is no longer visible in the current snapshot.
+The strongest difference is social. In the full run, Maya first asks Jordan generally, waits for his message, and then gets a vague answer. Reflection turns those interactions into a reusable model: Jordan is helpful, but vague follow-through fails, so Maya should ask him in person for the exact no-retrieval result and failure mode.
 
-The no-reflection baseline remembered the professor's explicit requirement through direct retrieval, so it still wrote the evidence section. Reflection mattered in a different place: at the "push ahead or reset" moment, the full agent retrieved a reflection about breaks and chose `take_break`, while the no-reflection agent chose `work_on_project`.
+At the next Jordan opportunity, the full run retrieves that reflection, asks differently, gets the exact baseline result, and writes the evidence section. The no-retrieval and no-reflection runs also talk with Jordan three times, but they keep the conversation vague and never get the useful result.
 
-This makes the result more honest. Project progress alone is too easy in this toy world; memory-dependent obligations and reflection-specific behavior are better evidence for the architecture.
+This makes the result more honest. Project progress alone is still too easy; the better evidence is that reflection changes the content of a later social interaction.
 
 ## Architecture
 
@@ -184,8 +190,8 @@ I also kept importance scoring even though it could have been cut. It was worth 
 I cut the parts that mostly support the full Smallville demo rather than the assignment's core:
 
 - 25 agents
-- Multi-agent conversations
-- Social coordination
+- Full multi-agent conversations
+- Full social coordination between independent agents
 - Information diffusion between agents
 - Phaser or any visual game interface
 - Sprite movement and pathfinding
@@ -194,7 +200,7 @@ I cut the parts that mostly support the full Smallville demo rather than the ass
 - Human believability evaluation
 - Social network metrics
 
-Those pieces are interesting, but they would make the project larger without proving the assignment's main point. A one-agent text simulation makes it easier to inspect whether memory retrieval and reflection are actually influencing behavior.
+Those pieces are interesting, but they would make the project larger without proving the assignment's main point. The current project keeps Maya as the only full agent and uses Jordan as a lightweight social actor, which makes it easier to inspect whether memory retrieval and reflection are actually influencing behavior.
 
 ## What Surprised Me So Far
 
@@ -202,13 +208,15 @@ The biggest surprise was how easy it was to accidentally make the environment to
 
 The second surprise was that retrieval and reflection help in different ways. Retrieval was enough to recover the professor's explicit no-retrieval-baseline requirement. Reflection mattered when the agent had to generalize from prior experience, such as choosing a reset break after noticing that focus depends on managing basic needs.
 
+The latest run made reflection's value clearer. Maya did not just remember a fact; she formed a small social model of Jordan: helpful, but vague unless asked directly. Retrieving that reflection changed a later conversation and produced evidence the baselines missed.
+
 The baselines also changed the claim. The project should not say that retrieval and reflection are required for all task completion. It should say that the paper's architecture creates a readable memory trail, supports obligations that depend on past events, and lets reflections become reusable knowledge.
 
 ## Next Improvements
 
 Useful next steps:
 
-- Add one more agent for a focused social coordination test.
+- Make Jordan a fuller second agent with his own memory stream.
 - Add a final interview mode to ask Maya what she remembers and what she learned.
 - Add a terminal "done for the day" state after the project reaches 100.
 - Add a stricter evaluation metric for whether retrieved memories actually change decisions.

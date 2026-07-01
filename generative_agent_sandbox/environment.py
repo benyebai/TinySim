@@ -17,20 +17,23 @@ class WorldSnapshot:
     progress: int
     mood: str
     evidence_section_written: bool
+    jordan_promised_baseline: bool
+    jordan_result_received: bool
 
     def describe(self) -> str:
         body_state = _body_state(self.hunger, self.energy, self.focus)
         project_state = _project_state(self.progress, self.evidence_section_written)
+        jordan_state = _jordan_state(self.jordan_promised_baseline, self.jordan_result_received)
         return (
             f"It is {self.time_label}. Maya is at the {self.location}. "
-            f"{body_state} {project_state} Maya's mood is {self.mood}."
+            f"{body_state} {project_state} {jordan_state} Maya's mood is {self.mood}."
         )
 
 
 class CampusWorld:
     """A small text world with enough pressure to make memory useful."""
 
-    locations = ["Dorm", "Library", "Cafe", "Classroom", "Park", "Store"]
+    locations = ["Dorm", "Library", "Cafe", "Classroom", "Park", "Store", "Campus"]
 
     def __init__(self, *, seed: int = 7) -> None:
         self.random = random.Random(seed)
@@ -43,6 +46,11 @@ class CampusWorld:
         self.last_action = "woke up and checked the project notebook"
         self.evidence_section_written = False
         self.baseline_comparison_done = False
+        self.jordan_promised_baseline = False
+        self.jordan_wait_count = 0
+        self.jordan_vague_replies = 0
+        self.jordan_result_received = False
+        self.jordan_result_used = False
 
     def snapshot(self, step: int) -> WorldSnapshot:
         return WorldSnapshot(
@@ -55,6 +63,8 @@ class CampusWorld:
             progress=self.progress,
             mood=self.mood,
             evidence_section_written=self.evidence_section_written,
+            jordan_promised_baseline=self.jordan_promised_baseline,
+            jordan_result_received=self.jordan_result_received,
         )
 
     def time_label(self, step: int) -> str:
@@ -72,12 +82,17 @@ class CampusWorld:
                 "During discussion, Professor Lin says the final report should compare "
                 "the full agent with a no-retrieval baseline, not just claim memory matters."
             ),
+            9: "Jordan catches Maya after class and asks whether she still needs help with baseline comparisons.",
             12: "Maya notices her project notes are scattered across three documents.",
+            16: "Maya checks her phone and sees no useful message from Jordan about the baseline yet.",
             18: "A quiet desk opens near the library window.",
             21: "Maya reaches a pause between work sessions and wonders whether to push ahead or reset.",
             24: "The cafe line is short and the smell of soup reminds Maya she skipped a meal.",
+            28: "Maya spots Jordan in the cafe; he looks friendly but distracted.",
             31: "Maya rereads the assignment note that says the surprises matter most.",
             37: "A professor's comment in the margin asks for clearer evidence of memory retrieval.",
+            39: "Maya reviews the outline and notices Jordan's exact no-retrieval baseline result is still missing.",
+            43: "Jordan is studying near the library window before leaving for lab.",
             44: "The park is unusually quiet, making it easier to think without pressure.",
             52: "Maya notices that the same action has appeared in her log several times.",
             61: "Maya reaches the final report section and needs to decide what evidence belongs there.",
@@ -124,6 +139,11 @@ class CampusWorld:
                 "Maya sees a small display of snacks near the checkout counter.",
                 "The store is practical but not especially inspiring.",
             ],
+            "Campus": [
+                "Students cross the campus path between classes.",
+                "Maya sees classmates moving between the cafe, library, and classrooms.",
+                "The campus path is busy enough that a quick conversation could happen naturally.",
+            ],
         }
         return self.random.choice(by_location[snapshot.location])
 
@@ -157,6 +177,65 @@ class CampusWorld:
             self.focus = max(0, self.focus - 1)
             self.mood = "reflective"
             result = "Maya annotates the transcript and preserves evidence for the writeup."
+        elif action_id == "wait_for_reply":
+            self.hunger = min(10, self.hunger + 1)
+            self.energy = max(0, self.energy - 1)
+            self.focus = max(0, self.focus - 1)
+            self.mood = "waiting"
+            if self.jordan_promised_baseline and not self.jordan_result_received:
+                self.jordan_wait_count += 1
+                result = (
+                    "Maya waits for Jordan's promised baseline message, but no useful "
+                    "result arrives."
+                )
+            else:
+                result = "Maya waits for a reply, but there is no useful update."
+        elif action_id == "send_message":
+            self.hunger = min(10, self.hunger + 1)
+            self.energy = max(0, self.energy - 1)
+            self.focus = max(0, self.focus - 1)
+            self.mood = "checking in"
+            if self.jordan_result_received:
+                result = "Maya messages Jordan, but she already has his exact baseline result in her notes."
+            elif self.jordan_promised_baseline:
+                self.jordan_vague_replies += 1
+                result = (
+                    "Maya sends Jordan a follow-up message. Jordan replies that he thinks "
+                    "the no-retrieval run mostly worked, then says he will check the details later."
+                )
+            else:
+                self.jordan_promised_baseline = True
+                result = (
+                    "Maya messages Jordan about baseline runs. Jordan says he can help "
+                    "and will send the no-retrieval result later."
+                )
+        elif action_id == "talk_with_jordan":
+            self.hunger = min(10, self.hunger + 1)
+            self.energy = max(0, self.energy - 1)
+            self.focus = max(0, self.focus - 1)
+            self.mood = "social"
+            if self.jordan_result_received:
+                result = "Maya chats with Jordan, but the useful baseline result is already in her notes."
+            elif _asks_for_exact_jordan_result(decision.reason):
+                self.jordan_promised_baseline = True
+                self.jordan_result_received = True
+                result = (
+                    "Maya asks Jordan for the exact no-retrieval result and failure mode. "
+                    "Jordan checks his notes: the no-retrieval run reached progress 100, "
+                    "but it never wrote the professor-required baseline comparison."
+                )
+            elif not self.jordan_promised_baseline:
+                self.jordan_promised_baseline = True
+                result = (
+                    "Maya talks with Jordan about baseline runs. Jordan is helpful and says "
+                    "he can check the no-retrieval result later, then hurries to class."
+                )
+            else:
+                self.jordan_vague_replies += 1
+                result = (
+                    "Maya talks with Jordan again. Jordan admits he got distracted and says "
+                    "the no-retrieval run mostly worked, but he does not give the exact failure mode."
+                )
         elif action_id == "write_evidence_section":
             self.progress = min(100, self.progress + 6)
             self.hunger = min(10, self.hunger + 1)
@@ -164,11 +243,18 @@ class CampusWorld:
             self.focus = max(0, self.focus - 1)
             self.mood = "analytical"
             self.evidence_section_written = True
-            if _mentions_baseline_requirement(decision.reason):
+            uses_jordan_result = self.jordan_result_received and _mentions_jordan_result(decision.reason)
+            if _mentions_baseline_requirement(decision.reason) and uses_jordan_result:
                 self.baseline_comparison_done = True
+                self.jordan_result_used = True
                 result = (
-                    "Maya writes the evidence section and explicitly compares the full run "
-                    "with a no-retrieval baseline."
+                    "Maya writes the evidence section using Professor Lin's comparison "
+                    "requirement and Jordan's exact no-retrieval baseline result."
+                )
+            elif _mentions_baseline_requirement(decision.reason):
+                result = (
+                    "Maya writes a comparison section, but it lacks Jordan's exact "
+                    "no-retrieval baseline result."
                 )
             else:
                 result = "Maya writes a general evidence section for the report."
@@ -272,6 +358,34 @@ def _project_state(progress: int, evidence_section_written: bool) -> str:
     return "The implementation feels complete, but the final evidence section is still blank."
 
 
+def _jordan_state(jordan_promised_baseline: bool, jordan_result_received: bool) -> str:
+    if jordan_result_received:
+        return "Maya has Jordan's exact no-retrieval baseline result in her notes."
+    if jordan_promised_baseline:
+        return "Maya is still waiting on Jordan's exact no-retrieval baseline details."
+    return "Maya does not yet have Jordan's baseline details."
+
+
+def _asks_for_exact_jordan_result(reason: str) -> bool:
+    reason_lower = reason.lower()
+    mentions_jordan = "jordan" in reason_lower
+    asks_for_specifics = any(
+        phrase in reason_lower
+        for phrase in [
+            "exact",
+            "specific",
+            "failure mode",
+            "what failed",
+            "missed",
+            "progress 100",
+            "precise",
+            "concrete",
+        ]
+    )
+    mentions_baseline = "baseline" in reason_lower or "no-retrieval" in reason_lower
+    return mentions_jordan and mentions_baseline and asks_for_specifics
+
+
 def _mentions_baseline_requirement(reason: str) -> bool:
     reason_lower = reason.lower()
     return any(
@@ -283,5 +397,21 @@ def _mentions_baseline_requirement(reason: str) -> bool:
             "baseline",
             "compare the full",
             "compare full",
+        ]
+    )
+
+
+def _mentions_jordan_result(reason: str) -> bool:
+    reason_lower = reason.lower()
+    return "jordan" in reason_lower and any(
+        phrase in reason_lower
+        for phrase in [
+            "exact",
+            "specific",
+            "progress 100",
+            "missed",
+            "failure mode",
+            "baseline comparison",
+            "professor-required",
         ]
     )

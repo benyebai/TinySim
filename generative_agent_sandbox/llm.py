@@ -47,6 +47,8 @@ class DeterministicLLM(BaseLLM):
             score += 3
         if any(word in text_lower for word in ["baseline", "no-retrieval", "compare"]):
             score += 3
+        if any(word in text_lower for word in ["jordan", "vague", "distracted", "exact", "specific"]):
+            score += 3
         if any(word in text_lower for word in ["ignored food", "stomach", "foggy", "drifting"]):
             score += 2
         if any(word in text_lower for word in ["progress", "reflection", "retrieval", "memory"]):
@@ -80,6 +82,55 @@ class DeterministicLLM(BaseLLM):
             or "compare the full agent" in retrieved_text
             or "compare full" in retrieved_text
         )
+        jordan_result_known = (
+            "has jordan's exact no-retrieval baseline result in her notes" in current
+            or (
+                "jordan" in retrieved_text
+                and "no-retrieval run reached progress 100" in retrieved_text
+                and "never wrote the professor-required baseline comparison" in retrieved_text
+            )
+        )
+        jordan_pattern_reflection = (
+            "jordan" in retrieved_reflections
+            and (
+                "vague follow-through fails" in retrieved_reflections
+                or "asking him in person for the exact" in retrieved_reflections
+                or "specific baseline question" in retrieved_reflections
+            )
+        )
+
+        if "professor lin says" in current or "discussion starts soon" in current:
+            return Decision.from_action_id(
+                "attend_discussion",
+                reason="The current discussion contains assignment guidance Maya should hear.",
+            )
+
+        if any(
+            cue in current
+            for cue in [
+                "jordan catches maya",
+                "maya spots jordan",
+                "jordan is studying",
+            ]
+        ):
+            if jordan_pattern_reflection and not jordan_result_known:
+                return Decision.from_action_id(
+                    "talk_with_jordan",
+                    reason=(
+                        "Maya retrieved a reflection that Jordan is helpful but vague unless asked in person, "
+                        "so she asks Jordan for the exact no-retrieval baseline result and failure mode."
+                    ),
+                )
+            return Decision.from_action_id(
+                "talk_with_jordan",
+                reason="Jordan is available, so Maya checks in generally about the baseline comparison.",
+            )
+
+        if "no useful message from jordan" in current:
+            return Decision.from_action_id(
+                "wait_for_reply",
+                reason="Jordan had promised to help, so Maya gives him time to send the baseline details.",
+            )
 
         if "very hungry" in current or "stomach" in current or "skipped a meal" in current:
             return Decision.from_action_id(
@@ -91,12 +142,6 @@ class DeterministicLLM(BaseLLM):
             return Decision.from_action_id(
                 "rest",
                 reason="Maya directly notices low energy, so resting is more believable than pushing ahead.",
-            )
-
-        if "professor lin says" in current or "discussion starts soon" in current:
-            return Decision.from_action_id(
-                "attend_discussion",
-                reason="The current discussion contains assignment guidance Maya should hear.",
             )
 
         if "clearer evidence" in current:
@@ -123,12 +168,25 @@ class DeterministicLLM(BaseLLM):
                 reason="The evidence section already has a draft, so Maya reviews notes instead of rewriting it.",
             )
 
-        if ready_for_evidence and remembered_baseline_requirement:
+        if ready_for_evidence and remembered_baseline_requirement and jordan_result_known:
             return Decision.from_action_id(
                 "write_evidence_section",
                 reason=(
                     "Maya remembers Professor Lin's requirement to compare the full agent "
-                    "with a no-retrieval baseline, so the evidence section should address that."
+                    "with a no-retrieval baseline, and Jordan's exact result that the no-retrieval "
+                    "run reached progress 100 but missed the professor-required baseline comparison."
+                ),
+            )
+
+        if (
+            "jordan's exact no-retrieval baseline result is still missing" in current
+            and jordan_pattern_reflection
+        ):
+            return Decision.from_action_id(
+                "send_message",
+                reason=(
+                    "Maya remembers that Jordan needs a concrete prompt, so she sends a focused follow-up "
+                    "asking for the exact no-retrieval baseline result."
                 ),
             )
 
@@ -148,6 +206,15 @@ class DeterministicLLM(BaseLLM):
             return Decision.from_action_id(
                 "organize_notes",
                 reason="Scattered notes are blocking progress more than effort is.",
+            )
+
+        if ready_for_evidence and remembered_baseline_requirement and not jordan_result_known:
+            return Decision.from_action_id(
+                "review_notes",
+                reason=(
+                    "Maya remembers the comparison requirement, but she still lacks Jordan's exact "
+                    "no-retrieval baseline result."
+                ),
             )
 
         if ready_for_evidence and not remembered_baseline_requirement:
@@ -193,6 +260,36 @@ class DeterministicLLM(BaseLLM):
                         "compare the full agent with a no-retrieval baseline rather than only claiming memory matters."
                     ),
                     evidence_ids=ids_by_keyword(["no-retrieval", "no retrieval", "baseline", "compare"]),
+                    importance=10.0,
+                )
+            )
+
+        if "jordan" in text_blob and any(
+            phrase in text_blob
+            for phrase in [
+                "got distracted",
+                "mostly worked",
+                "does not give the exact failure mode",
+                "will check the details later",
+            ]
+        ):
+            drafts.append(
+                ReflectionDraft(
+                    text=(
+                        f"By step {latest_step}, Jordan seems helpful but vague follow-through fails; "
+                        "Maya gets useful baseline information only by asking him in person for the "
+                        "exact no-retrieval result and failure mode."
+                    ),
+                    evidence_ids=ids_by_keyword(
+                        [
+                            "jordan",
+                            "no useful message",
+                            "got distracted",
+                            "mostly worked",
+                            "exact",
+                            "failure mode",
+                        ]
+                    ),
                     importance=10.0,
                 )
             )
@@ -333,7 +430,7 @@ Retrieved memories:
     def reflect(self, *, recent_memories: list[Memory]) -> list[ReflectionDraft]:
         numbered = "\n".join(f"{memory.id}. {memory.text}" for memory in recent_memories)
         prompt = f"""
-Given the memories below, infer 3 to 5 higher-level insights about Maya's goals, habits, concerns, or changing priorities.
+Given the memories below, infer 3 to 5 higher-level insights about Maya's goals, habits, concerns, relationships, or changing priorities.
 Return strict JSON as an array of objects with keys: text, evidence_ids, importance.
 Evidence ids must refer to memory numbers below.
 

@@ -497,3 +497,160 @@ Better metrics than project progress:
 ### Next Decision
 
 Do not add a large multi-agent world. Add exactly one more agent and one focused social coordination requirement. The goal should be to show one small version of the paper's social believability argument while keeping the run easy to inspect.
+
+## Full Test Runs 009-011: Social Reflection With Jordan
+
+- Date: 2026-07-01
+- Code tested: working tree after adding lightweight Jordan interactions
+- Mode: deterministic
+- Full command: `python3 run.py --steps 80 --log logs/runs/run_009_social_reflection_full.md --memory logs/runs/run_009_social_reflection_memory.json --summary logs/runs/run_009_social_reflection_summary.json`
+- No-retrieval command: `python3 run.py --steps 80 --top-k 0 --log logs/runs/run_010_social_reflection_no_retrieval.md --memory logs/runs/run_010_social_reflection_no_retrieval_memory.json --summary logs/runs/run_010_social_reflection_no_retrieval_summary.json`
+- No-reflection command: `python3 run.py --steps 80 --reflection-interval 0 --log logs/runs/run_011_social_reflection_no_reflection.md --memory logs/runs/run_011_social_reflection_no_reflection_memory.json --summary logs/runs/run_011_social_reflection_no_reflection_summary.json`
+
+### Experiment Idea
+
+This iteration tested a clearer reflection effect: Maya should learn something about Jordan's behavior.
+
+Jordan is helpful, but vague follow-through fails. If Maya asks generally, he promises to help or says the baseline "mostly worked." If she asks in person for the exact no-retrieval result and failure mode, he gives the useful result.
+
+The important design choice is that the action list does not include a special "ask Jordan specific question" button. Maya only has generic social actions like `talk_with_jordan`, `send_message`, and `wait_for_reply`. The specificity has to come from retrieved memory and the decision reason.
+
+### Results
+
+| Metric | Run 009: Full | Run 010: No Retrieval | Run 011: No Reflection |
+| --- | ---: | ---: | ---: |
+| Project progress | 100 | 100 | 100 |
+| Reflection memories | 16 | 16 | 0 |
+| Avg. retrieved memories per step | 5.99 | 0.00 | 5.99 |
+| Reflection retrieval count | 30 | 0 | 0 |
+| Jordan pattern reflections | 1 | 2 | 0 |
+| Jordan result retrieved | 73 | 0 | 0 |
+| Jordan result received | true | false | false |
+| Jordan result used | true | false | false |
+| Evidence section written | true | false | false |
+| Baseline comparison done | true | false | false |
+| Jordan conversations | 3 | 3 | 3 |
+| Jordan vague replies | 1 | 2 | 2 |
+
+### Key Transcript Moment
+
+In the full run, Maya first talks with Jordan generally. Jordan promises to help. Later, Maya waits for the message and nothing useful arrives. Later still, Jordan gives a vague answer: the no-retrieval run "mostly worked," but he does not provide the exact failure mode.
+
+At step 40, reflection creates the important social inference:
+
+> Jordan seems helpful but vague follow-through fails; Maya gets useful baseline information only by asking him in person for the exact no-retrieval result and failure mode.
+
+At step 43, Jordan is available. The full run retrieves that reflection and chooses `talk_with_jordan` with a specific reason. Jordan then provides the useful result: the no-retrieval run reached progress 100, but it never wrote the professor-required baseline comparison.
+
+At step 44, Maya writes the evidence section using both Professor Lin's requirement and Jordan's exact result.
+
+### Baseline Behavior
+
+The no-retrieval run actually generated Jordan-pattern reflections, because reflection still sees recent memories. But with retrieval disabled, Maya could not bring those reflections back into the decision at step 43. She talked with Jordan generally and got another vague answer.
+
+The no-reflection run retrieved the earlier Jordan conversations and remembered the professor's requirement, but it never formed the higher-level social model. At step 43 it also talked with Jordan generally and got another vague answer.
+
+This is the strongest reflection evidence so far. The difference is not that the full agent had a special action. All three runs used `talk_with_jordan` three times. The difference is that only the full agent retrieved a reflection that changed the content of the conversation.
+
+### What Was Good
+
+- Reflection now represents a social pattern, not just a task reminder.
+- The effect is easy to inspect in the transcript.
+- The full and baseline runs diverge at a natural human moment: how to ask a helpful but distracted collaborator for information.
+- The result is closer to the paper's believability argument because it involves social memory and coordination.
+
+### What Is Still Weak
+
+- Jordan is still a lightweight world actor, not a full generative agent with his own planner and memory retrieval.
+- The deterministic policy is still hand-authored, so this proves the architecture and experiment shape more than it proves open-ended human believability.
+- The retrieval query needed a small improvement to surface social reflections when Jordan was salient. That is defensible, but it means retrieval design matters a lot.
+- The world still has scripted opportunities for Jordan, rather than emergent meetings.
+
+### Decision
+
+This is a better next sample than the earlier one-agent memory test. The honest claim is:
+
+The sandbox now demonstrates a small social-reflection effect: reflection can turn repeated interactions into a reusable model of another person's behavior, and retrieval of that model can change a later conversation.
+
+## Reflection After Runs 009-011: What This Iteration Taught Us
+
+- Date: 2026-07-01
+- Focus: whether the Jordan setup makes reflection feel important, not just present
+
+### The Shift In This Iteration
+
+This iteration moved the project from "Maya remembers an instruction" to "Maya forms a small interpretation of another person's behavior."
+
+That matters because the paper's most interesting claim is not that an agent can store facts. The stronger claim is that memories can accumulate into higher-level beliefs, and those beliefs can shape later behavior. The Jordan experiment is our clearest version of that so far.
+
+The useful reflection was not a direct task note like "write the evidence section." It was a social model:
+
+> Jordan is helpful, but vague follow-through fails; ask him in person for the exact result and failure mode.
+
+That feels closer to human behavior. People often do not just remember what someone said. They remember how that person tends to act, then adjust how they coordinate with them.
+
+### Why This Is Better Evidence
+
+The best part of the result is that all three runs had the same visible social opportunity. Maya talked with Jordan three times in the full run, the no-retrieval run, and the no-reflection run.
+
+So the difference was not "the full run got more chances." The difference was what Maya brought into the same chance:
+
+- Full run: retrieved the Jordan reflection, asked a specific question, got the useful baseline result, and wrote the evidence section.
+- No retrieval: generated some useful reflections, but could not bring them back at the right moment.
+- No reflection: remembered earlier Jordan interactions, but did not compress them into a reusable social lesson.
+
+That is a cleaner argument than project progress alone. Project progress reached 100 in every run, which means progress is not the right evidence. The better evidence is the causal trail:
+
+1. repeated vague Jordan interactions,
+2. reflection creates a higher-level social inference,
+3. retrieval surfaces that inference when Jordan appears again,
+4. Maya changes the content of the conversation,
+5. the final written evidence becomes possible.
+
+### What Still Feels Artificial
+
+We should be honest that this is still not a full proof of believable human behavior.
+
+Jordan is a lightweight world actor, not a second generative agent with his own memory stream, needs, plans, and retrieval. The environment creates the moments where Jordan appears. The deterministic policy also contains hand-authored logic for recognizing when the Jordan reflection matters.
+
+So the current claim should stay narrow:
+
+This experiment shows that reflection can create a useful social abstraction, and retrieval of that abstraction can change later behavior.
+
+It does not yet show that believable multi-agent social life emerges naturally from the system.
+
+### What We Learned About Reflection
+
+Reflection is most convincing when the current observation is not enough by itself.
+
+If the observation says, "Professor Lin requires a baseline comparison," then direct memory retrieval can solve the task. Reflection is helpful but not necessary.
+
+If the observation says, "Jordan is nearby," the right action depends on a pattern across time. Maya has to know that general check-ins with Jordan have failed before. That is where reflection becomes more visibly important.
+
+This is probably the design rule for future experiments:
+
+Reflection should matter when the agent needs a compressed lesson from multiple past events, not when it only needs one remembered fact.
+
+### What We Should Test Next
+
+The next step should make Jordan more independent without making the whole project too large.
+
+Recommended next iteration:
+
+- Give Jordan his own small memory stream.
+- Let Jordan remember being asked, getting distracted, and later finding the baseline result.
+- Let Maya and Jordan exchange actual message content rather than using only outcome text.
+- Keep the same three baselines: full, no retrieval, no reflection.
+- Add a "no Jordan memory" baseline if Jordan becomes a real agent.
+
+The key question should be:
+
+Can Maya and Jordan coordinate through their own remembered histories, rather than through a single scripted world state?
+
+### Current Best Claim
+
+Our best claim after this iteration is:
+
+The sandbox now gives a small, inspectable example of the paper's memory-reflection loop. Reflection turns repeated experience into a reusable belief, retrieval brings that belief back in context, and the agent's later social behavior changes in a way the baselines do not reproduce.
+
+That is not full human believability yet. But it is finally evidence for why reflection matters.
