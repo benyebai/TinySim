@@ -325,4 +325,17 @@ However, the baseline still supports the value of the paper's architecture in a 
 
 Keep Run 005 as an important baseline. In the final writeup, avoid claiming that retrieval or reflection are necessary for task completion. Instead, claim that the full architecture provides continuity, inspectability, and higher-level self-explanation, while the baselines show that simple task completion is an insufficient evaluation metric.
 
-For the next project iteration, add a final interview mode or an evaluation metric that checks whether retrieved memories actually change the chosen action.
+### Weakness Found After Baselines
+
+The baseline runs exposed a weakness in the experiment design. The environment gives the agent a very informative current state on every step: hunger, energy, focus, project progress, location, and the current observation. The action schema and guardrails also encode useful behavioral rules such as eating when hungry, resting when tired, and taking a break when focus is depleted.
+
+Because of this, the agent can often act competently without needing retrieval. The no-retrieval run still reached project progress 100, which means the current task is not memory-dependent enough to prove that retrieval is necessary for success.
+
+The next experiment should include information that appears once and must be remembered later. Examples:
+
+- A professor gives a specific requirement early in the day that must be used in the final writeup.
+- A useful source, deadline, or constraint is mentioned once and disappears from the current state.
+- The cafe or library changes availability, and Maya has to remember that change later.
+- The assignment asks for a specific kind of surprise, but that instruction is stored only as a memory rather than repeated in the agent summary.
+
+For the next project iteration, add a memory-dependent task or an evaluation metric that checks whether retrieved memories actually change the chosen action.

@@ -132,6 +132,8 @@ I also ran 80-step gateway baselines with reflection disabled and retrieval disa
 
 Both baselines completed the project, which is an important limitation: in this simplified world, structured actions, current observations, and guardrails are enough for raw task completion. Reflection and retrieval still matter for the assignment because they make the internal process inspectable. The full system shows retrieved memories influencing decisions, while the baselines reveal how much behavior can come from the current state and fixed agent goal alone.
 
+The baselines exposed a weakness in the experiment design: the current state is informative enough that the agent can often act well without memory retrieval. A stronger next experiment would add a requirement that appears once and must be remembered later, such as a professor's specific instruction or a changing resource constraint.
+
 ## Architecture
 
 Important files:
