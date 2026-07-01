@@ -83,6 +83,12 @@ Reflection can be disabled for an ablation run:
 python3 run.py --steps 80 --llm gateway --reflection-interval 0
 ```
 
+Retrieval can be disabled for a baseline run:
+
+```bash
+python3 run.py --steps 80 --llm gateway --top-k 0
+```
+
 ## Current Sample Run
 
 The included sample run uses Vercel AI Gateway mode for 80 steps.
@@ -110,20 +116,21 @@ score = recency + importance + relevance
 
 Each retrieved memory includes the total score plus the component scores.
 
-## Reflection Ablation
+## Baseline Runs
 
-I also ran the same 80-step gateway simulation with reflection disabled.
+I also ran 80-step gateway baselines with reflection disabled and retrieval disabled.
 
-| Metric | Reflection On | Reflection Off |
-| --- | ---: | ---: |
-| Project progress | 100 | 100 |
-| Final hunger | 2 | 8 |
-| Final energy | 8 | 10 |
-| Final focus | 7 | 9 |
-| Reflection memories | 20 | 0 |
-| `review_notes` actions | 5 | 0 |
+| Metric | Full System | No Reflection | No Retrieval |
+| --- | ---: | ---: | ---: |
+| Project progress | 100 | 100 | 100 |
+| Final hunger | 2 | 8 | 5 |
+| Final energy | 8 | 10 | 8 |
+| Final focus | 7 | 9 | 8 |
+| Reflection memories | 20 | 0 | 20 |
+| Avg. retrieved memories per step | 5.99 | 5.99 | 0 |
+| `review_notes` actions | 5 | 0 | 9 |
 
-The no-reflection agent still completed the project, which is an important limitation: in this simplified world, structured actions and guardrails are enough for raw task completion. Reflection still matters because it creates explicit high-level lessons and makes the run better evidence for behavior changing over time.
+Both baselines completed the project, which is an important limitation: in this simplified world, structured actions, current observations, and guardrails are enough for raw task completion. Reflection and retrieval still matter for the assignment because they make the internal process inspectable. The full system shows retrieved memories influencing decisions, while the baselines reveal how much behavior can come from the current state and fixed agent goal alone.
 
 ## Architecture
 
@@ -179,13 +186,15 @@ The first live gateway run surfaced a sharper failure mode. Maya repeatedly reas
 
 Adding a structured action schema fixed that grounding problem, but revealed a second issue: Maya would sometimes keep working even when energy and focus were depleted. The current version adds a small needs-aware guardrail, which produced a much healthier 80-step run: project progress reached 100, hunger ended at 2, energy at 8, and focus at 7.
 
+The ablation runs also created a useful surprise: in this simplified environment, removing reflection or retrieval did not prevent task completion. That means project progress alone is not a good enough measure of whether the paper's architecture matters. The stronger evidence is qualitative: the full system creates inspectable memory retrieval, high-level reflection, and explicit documentation behavior.
+
 ## Next Improvements
 
 Useful next steps:
 
 - Add a final interview mode to ask Maya what she remembers and what she learned.
 - Add a terminal "done for the day" state after the project reaches 100.
-- Compare deterministic, gateway, and no-reflection runs in one table.
+- Add a stricter evaluation metric for whether retrieved memories actually change decisions.
 - Make OpenAI mode generate richer final interviews while preserving JSON output.
 
 ## Paper Notes

@@ -252,3 +252,77 @@ However, reflection still adds value that matters for this assignment: it create
 Keep reflection enabled in the main sample. Report the ablation as a useful limitation and nuance: the experiment supports the paper's memory/reflection idea, but it also shows that evaluation metrics matter. If we only measure project progress, reflection looks optional; if we measure high-level self-explanation and evidence for changed behavior, reflection becomes important.
 
 For the next project iteration, add a final interview mode or a clearer "done for the day" terminal state.
+
+## Full Test Run 005: No-Retrieval Baseline
+
+- Date: 2026-07-01
+- Code commit tested: `c3219d777a2d141e73fa4c207171e7f6cd14c428`
+- Mode: Vercel AI Gateway
+- Command: `python3 run.py --steps 80 --llm gateway --top-k 0`
+- Transcript: `logs/runs/run_005_no_retrieval_sample_run.md`
+- Memory stream: `logs/runs/run_005_no_retrieval_memory.json`
+- Summary: `logs/runs/run_005_no_retrieval_summary.json`
+
+### Result
+
+```json
+{
+  "steps": 80,
+  "final_location": "Dorm",
+  "final_hunger": 5,
+  "final_energy": 8,
+  "final_focus": 8,
+  "final_project_progress": 100,
+  "memory_count": 184,
+  "reflection_count": 20
+}
+```
+
+### Action Counts
+
+- `organize_notes`: 25
+- `work_on_project`: 20
+- `eat_meal`: 10
+- `review_notes`: 9
+- `rest`: 9
+- `take_break`: 6
+- `go_to_library`: 1
+
+### Comparison To Run 003 And Run 004
+
+| Metric | Run 003: Full System | Run 004: No Reflection | Run 005: No Retrieval |
+| --- | ---: | ---: | ---: |
+| Project progress | 100 | 100 | 100 |
+| Final hunger | 2 | 8 | 5 |
+| Final energy | 8 | 10 | 8 |
+| Final focus | 7 | 9 | 8 |
+| Reflection memories | 20 | 0 | 20 |
+| Avg. retrieved memories per step | 5.99 | 5.99 | 0 |
+| `review_notes` actions | 5 | 0 | 9 |
+| Guardrail decisions | 6 | 10 | 2 |
+
+### What Worked
+
+- The run completed with zero retrieved memories at every step.
+- Maya still reached project progress 100.
+- Reflections were still generated at steps 20, 40, 60, and 80 because reflection uses recent memories directly rather than action retrieval.
+- The transcript clearly shows empty "Retrieved memories" sections, making the baseline easy to inspect.
+
+### What Was Surprising
+
+- Removing retrieval did not break task completion.
+- The agent compensated using the current world state, the current observation, the static agent goal, and the structured action schema.
+- The run chose `organize_notes` much more often than the full system.
+- The agent still chose `review_notes` 9 times, which shows that the static goal and current state can induce documentation behavior even without retrieved memories.
+
+### Interpretation
+
+This baseline weakens any overly simple claim that retrieval is required for task completion in this toy environment. It shows that a sufficiently informative current-state prompt plus guardrails can produce competent behavior.
+
+However, the baseline still supports the value of the paper's architecture in a more careful way. Retrieval is not just about reaching a numeric goal; it is about making the cause of behavior inspectable. In the full system, the transcript can show exactly which past memories were selected and how their recency, importance, and relevance contributed to the next action. With retrieval disabled, the agent may still behave well, but the decision process has less explicit historical grounding.
+
+### Decision
+
+Keep Run 005 as an important baseline. In the final writeup, avoid claiming that retrieval or reflection are necessary for task completion. Instead, claim that the full architecture provides continuity, inspectability, and higher-level self-explanation, while the baselines show that simple task completion is an insufficient evaluation metric.
+
+For the next project iteration, add a final interview mode or an evaluation metric that checks whether retrieved memories actually change the chosen action.
