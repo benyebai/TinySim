@@ -77,6 +77,12 @@ You can checkpoint less often with:
 python3 run.py --steps 80 --llm gateway --checkpoint-every 5
 ```
 
+Reflection can be disabled for an ablation run:
+
+```bash
+python3 run.py --steps 80 --llm gateway --reflection-interval 0
+```
+
 ## Current Sample Run
 
 The included sample run uses Vercel AI Gateway mode for 80 steps.
@@ -103,6 +109,21 @@ score = recency + importance + relevance
 ```
 
 Each retrieved memory includes the total score plus the component scores.
+
+## Reflection Ablation
+
+I also ran the same 80-step gateway simulation with reflection disabled.
+
+| Metric | Reflection On | Reflection Off |
+| --- | ---: | ---: |
+| Project progress | 100 | 100 |
+| Final hunger | 2 | 8 |
+| Final energy | 8 | 10 |
+| Final focus | 7 | 9 |
+| Reflection memories | 20 | 0 |
+| `review_notes` actions | 5 | 0 |
+
+The no-reflection agent still completed the project, which is an important limitation: in this simplified world, structured actions and guardrails are enough for raw task completion. Reflection still matters because it creates explicit high-level lessons and makes the run better evidence for behavior changing over time.
 
 ## Architecture
 
@@ -162,7 +183,6 @@ Adding a structured action schema fixed that grounding problem, but revealed a s
 
 Useful next steps:
 
-- Add an ablation mode: run with reflection disabled and compare behavior.
 - Add a final interview mode to ask Maya what she remembers and what she learned.
 - Add a terminal "done for the day" state after the project reaches 100.
 - Compare deterministic, gateway, and no-reflection runs in one table.

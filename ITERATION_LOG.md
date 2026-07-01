@@ -179,4 +179,76 @@ Use Full Test Run 003 as the current best sample run. Keep both changes:
 - Structured action ids instead of open-ended action strings.
 - Needs-aware guardrails for food, rest, focus recovery, and movement grounding.
 
-For the next project iteration, add either a no-reflection comparison run or a final interview mode.
+For the next project iteration, add a no-reflection comparison run to test whether reflection changes behavior beyond the action schema and guardrails.
+
+## Full Test Run 004: No-Reflection Ablation
+
+- Date: 2026-07-01
+- Code commit tested: `0efb7d4b62a812c4ad0cf7cc4df4806c0e362df7`
+- Mode: Vercel AI Gateway
+- Command: `python3 run.py --steps 80 --llm gateway --reflection-interval 0`
+- Transcript: `logs/runs/run_004_no_reflection_sample_run.md`
+- Memory stream: `logs/runs/run_004_no_reflection_memory.json`
+- Summary: `logs/runs/run_004_no_reflection_summary.json`
+
+### Result
+
+```json
+{
+  "steps": 80,
+  "final_location": "Park",
+  "final_hunger": 8,
+  "final_energy": 10,
+  "final_focus": 9,
+  "final_project_progress": 100,
+  "memory_count": 164,
+  "reflection_count": 0
+}
+```
+
+### Action Counts
+
+- `work_on_project`: 24
+- `go_to_library`: 21
+- `take_break`: 19
+- `eat_meal`: 13
+- `rest`: 3
+
+### Comparison To Run 003
+
+| Metric | Run 003: Reflection On | Run 004: Reflection Off |
+| --- | ---: | ---: |
+| Project progress | 100 | 100 |
+| Final hunger | 2 | 8 |
+| Final energy | 8 | 10 |
+| Final focus | 7 | 9 |
+| Reflection memories | 20 | 0 |
+| `review_notes` actions | 5 | 0 |
+| First reached progress 100 | Step 40 | Step 37 |
+| Guardrail decisions | 6 | 10 |
+
+### What Worked
+
+- The no-reflection agent still completed the project.
+- Structured actions and needs-aware guardrails were strong enough to maintain useful behavior without reflection memories.
+- There were zero "modest effect" outcomes.
+- This makes the experiment more honest: reflection is not the only reason the final agent works.
+
+### What Was Missing Without Reflection
+
+- No higher-level reflection memories were created.
+- Maya never chose `review_notes`, while the reflected run chose it 5 times.
+- Late behavior leaned into a repeated park/library cycle instead of explicitly documenting what had changed.
+- Maya ended much hungrier than the reflected run.
+
+### Interpretation
+
+The ablation shows that reflection is not necessary for raw task completion in this simplified environment. Immediate observations, retrieval over action memories, structured actions, and guardrails can already produce competent behavior.
+
+However, reflection still adds value that matters for this assignment: it creates explicit high-level lessons, gives the transcript stronger evidence that the agent learned from experience, and encourages behavior related to documenting the run rather than only continuing the work loop.
+
+### Decision
+
+Keep reflection enabled in the main sample. Report the ablation as a useful limitation and nuance: the experiment supports the paper's memory/reflection idea, but it also shows that evaluation metrics matter. If we only measure project progress, reflection looks optional; if we measure high-level self-explanation and evidence for changed behavior, reflection becomes important.
+
+For the next project iteration, add a final interview mode or a clearer "done for the day" terminal state.
