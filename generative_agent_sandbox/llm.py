@@ -270,7 +270,14 @@ Retrieved memories:
             action_id = normalize_action_id(str(data.get("action_id", data.get("action", ""))))
             if action_id is None:
                 raise ValueError(f"Unknown action id: {data}")
-            return Decision.from_action_id(action_id, reason=str(data["reason"]))
+            reason = str(data["reason"])
+            action_id, reason = _repair_action_choice(
+                action_id,
+                world_state=world_state,
+                observation=observation,
+                reason=reason,
+            )
+            return Decision.from_action_id(action_id, reason=reason)
         except Exception:
             return self.fallback.choose_action(
                 agent_summary=agent_summary,
@@ -353,6 +360,73 @@ def _parse_state(world_state: str) -> dict[str, int]:
         if match:
             defaults[key] = int(match.group(1))
     return defaults
+
+
+def _repair_action_choice(
+    action_id: str,
+    *,
+    world_state: str,
+    observation: str,
+    reason: str,
+) -> tuple[str, str]:
+    state = _parse_state(world_state)
+    observation_lower = observation.lower()
+    reason_lower = reason.lower()
+
+    if (
+        state["hunger"] >= 8
+        or "stomach" in observation_lower
+        or "skipped a meal" in observation_lower
+    ) and action_id not in {"eat_meal", "buy_snack"}:
+        return (
+            "eat_meal",
+            f"{reason} Guardrail: hunger is critical, so Maya eats before continuing.",
+        )
+
+    if (state["energy"] <= 2 or "mentally foggy" in observation_lower) and action_id != "rest":
+        return (
+            "rest",
+            f"{reason} Guardrail: energy is too low for productive work, so Maya rests first.",
+        )
+
+    if (
+        state["focus"] <= 1
+        or "attention keeps drifting" in observation_lower
+    ) and action_id == "work_on_project":
+        return (
+            "take_break",
+            f"{reason} Guardrail: focus is depleted, so Maya resets before doing more work.",
+        )
+
+    if action_id == "go_to_cafe" and (
+        state["hunger"] >= 5 or "food" in reason_lower or "eat" in reason_lower
+    ):
+        return (
+            "eat_meal",
+            f"{reason} Grounding: going to the cafe for food is executed as eating a meal.",
+        )
+
+    if action_id == "go_to_dorm" and (
+        state["energy"] <= 5 or "rest" in reason_lower or "energy" in reason_lower
+    ):
+        return (
+            "rest",
+            f"{reason} Grounding: going to the dorm for recovery is executed as resting.",
+        )
+
+    if (
+        action_id == "go_to_library"
+        and state["progress"] < 100
+        and state["hunger"] < 7
+        and state["energy"] >= 3
+        and state["focus"] >= 3
+    ):
+        return (
+            "work_on_project",
+            f"{reason} Grounding: going to the library to advance the assignment is executed as project work.",
+        )
+
+    return action_id, reason
 
 
 def _env_truthy(name: str) -> bool:
