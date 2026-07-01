@@ -160,6 +160,78 @@ Artifacts:
 
 The baselines are useful because they still complete the generic project and still write something, but they fail the specific social-memory condition. Without retrieval, reflections are generated but never brought back into the action prompt. Without reflection, direct memories are not enough to produce the higher-level Jordan strategy. In both baselines, Maya writes a general evidence section rather than a valid baseline comparison using Jordan's exact result.
 
+## Most Important Runs
+
+The useful story is the progression across runs, not just the final transcript. Early runs made the agent competent, then the baselines showed that competence was too weak a measure, then the final GPT-5 runs tested a more memory-dependent social task.
+
+| Run | What It Tested | What Happened | What Changed |
+| --- | --- | --- | --- |
+| Run 001 | First live Gateway run with open-ended actions. | Maya reasoned about eating and resting, but often chose vague movement actions. The project only reached 10 progress, with hunger and fatigue maxed out. | Added a structured action schema so the model had to choose executable actions. |
+| Run 003 | Structured actions plus needs guardrails. | Maya reached project progress 100 and ended in a healthier state. | This proved the loop could produce sensible behavior, but it also made the task too easy. |
+| Runs 004-005 | No-reflection and no-retrieval baselines. | Both baselines still reached progress 100. | Reframed the claim: raw task completion was not enough evidence for reflection or retrieval. |
+| Jordan redesign | A memory-dependent social requirement. | Maya needed Jordan's exact no-retrieval result later, after earlier vague follow-ups failed. | Made the experiment test whether reflection turns repeated social friction into a reusable strategy. |
+| Runs 012-014 | Final live GPT-5 full/no-retrieval/no-reflection comparison. | Only the full agent got Jordan's exact result, used it, and completed the required baseline comparison. | This became the final evidence used in the README and logs. |
+
+The final claim is intentionally narrow: this project does not prove the whole paper. It shows, in a small inspectable setting, that retrieval plus reflection can change behavior on a task where the agent must remember a prior requirement, learn from repeated failed coordination, and use that lesson later.
+
+## Assignment Reflection
+
+### What I Chose To Cut From The Paper And Why
+
+I cut the parts that mostly support the full Smallville demo rather than the assignment's core:
+
+- 25 agents
+- Full independent multi-agent conversations
+- Information diffusion across a town
+- Phaser or any visual game interface
+- Sprite movement and pathfinding
+- Complex environment tree modeling
+- Recursive day/hour/minute planning
+- Human believability evaluation with outside raters
+- Social network metrics
+
+Those pieces are valuable in the paper, but for a seven-hour assignment they would mostly add surface area. I kept Maya as the only full generative agent and made Jordan a lightweight world actor. That is less ambitious, but it made the central question easier to inspect: do memory retrieval and reflection actually affect Maya's later actions?
+
+### What I Kept That I Could Have Cut
+
+I kept importance scoring, even though a simpler recency-only retrieval system would have been much faster. It was worth keeping because the paper's retrieval mechanism depends on recency, importance, and relevance, and the transcript can show those scores for each retrieved memory.
+
+I kept reflection as a memory type rather than just printing summaries to the log. This mattered because the final run depends on a reflection being stored, retrieved later, and used to change the Jordan conversation.
+
+I kept live LLM behavior only for the final evidence. Deterministic runs were useful during development, but they were removed from the submission artifacts because they made the system look cleaner than it really was.
+
+I also kept the baselines. They made the story more complicated, but much more honest. The no-retrieval and no-reflection runs showed that generic project progress was too easy, while the Jordan comparison showed a more specific place where the full architecture mattered.
+
+### What Surprised Me
+
+The biggest surprise was how easy it was to accidentally make the environment too helpful. When the agent saw exact hunger, energy, focus, and progress numbers, it could behave well without using memory much. The current version keeps those numbers for evaluation, but gives Maya more qualitative observations.
+
+The second surprise was that an LLM can sound thoughtful while still taking the wrong kind of action. In Run 001, Maya explained that she should eat or rest, but selected vague movement actions that the environment could not treat as eating or resting. That failure led to the structured action schema.
+
+The third surprise was that reflection did not matter until the task actually required generalization. In the early project-progress task, no-reflection and no-retrieval baselines still succeeded. Reflection became more meaningful only after the Jordan task required Maya to notice a pattern: vague messages were not working, so she needed to ask Jordan directly in person for exact baseline details.
+
+The most interesting broken behavior was at the end of the final full run. GPT-5 completed the evidence section, but then kept choosing `write_evidence_section` many more times. That is a real remaining weakness: the environment needs a terminal `submit_report` or "done for the day" action so the agent can stop productively.
+
+## What We Reached
+
+The strongest evidence is Runs 012-014:
+
+- Full GPT-5 agent: received Jordan's exact result, used it, and completed the baseline comparison.
+- No retrieval: generated reflections, but could not bring them back into the action prompt, so the Jordan result was never received or used.
+- No reflection: retrieved direct memories, but never formed the higher-level Jordan strategy, so the valid baseline comparison was still missing.
+
+The biggest lesson is that the paper's architecture is not automatically impressive just because an agent completes a task. The evidence gets stronger when the task contains a memory-dependent obligation and the transcript shows the actual path from memory to reflection to later action.
+
+## Remaining Weaknesses
+
+Useful next steps:
+
+- Add a terminal `submit_report` or "done for the day" action after the evidence section is valid.
+- Make Jordan a fuller second agent with his own memory stream and reflections.
+- Add a final interview mode to ask Maya what she remembers and what she learned.
+- Add a stricter metric for whether retrieved memories actually change decisions.
+- Run multiple live seeds or models to see whether the same reflection effect survives model variation.
+
 ## Architecture
 
 Important files:
@@ -170,58 +242,6 @@ Important files:
 - `generative_agent_sandbox/environment.py`: small campus world
 - `generative_agent_sandbox/llm.py`: OpenAI and Vercel AI Gateway live LLM backends
 - `generative_agent_sandbox/simulation.py`: run orchestration and log writing
-
-## What I Kept From The Paper
-
-I kept the parts that define the core cognitive architecture:
-
-- Natural-language memory stream
-- Retrieval based on recency, importance, and relevance
-- Importance scoring for memories
-- Reflection as a second kind of memory
-- Reflections stored back into the same memory stream
-- A time-stepped observe-retrieve-act loop
-- A transcript that makes the agent's memory use inspectable
-
-I also kept importance scoring even though it could have been cut. It was worth keeping because it lets the agent distinguish routine observations from moments that should matter later.
-
-## What I Cut From The Paper
-
-I cut the parts that mostly support the full Smallville demo rather than the assignment's core:
-
-- 25 agents
-- Full multi-agent conversations
-- Full social coordination between independent agents
-- Information diffusion between agents
-- Phaser or any visual game interface
-- Sprite movement and pathfinding
-- Complex environment tree modeling
-- Recursive day/hour/minute planning
-- Human believability evaluation
-- Social network metrics
-
-Those pieces are interesting, but they would make the project larger without proving the assignment's main point. The current project keeps Maya as the only full agent and uses Jordan as a lightweight social actor, which makes it easier to inspect whether memory retrieval and reflection are actually influencing behavior.
-
-## What Surprised Me So Far
-
-The biggest surprise was how easy it was to accidentally make the environment too helpful. Exact hunger, energy, focus, and project-progress numbers let the agent act competently without relying much on memory. The current version keeps those internal meters for evaluation, but the agent only sees qualitative descriptions.
-
-The second surprise was that retrieval and reflection help in different ways. Retrieval was enough to recover the professor's explicit no-retrieval-baseline requirement. Reflection mattered when the agent had to generalize from prior experience, such as choosing a reset break after noticing that focus depends on managing basic needs.
-
-Switching back to live LLMs made the experiment less clean but more honest. The live model exposed that the environment and retrieval setup were too fragile: Maya could over-wait for Jordan, miss a one-time in-person opportunity, or bury useful reflections under repeated action memories.
-
-The baselines also changed the claim. The project should not say that retrieval and reflection are required for all task completion. It should say that the paper's architecture creates a readable memory trail, supports obligations that depend on past events, and lets reflections become reusable knowledge.
-
-## Next Improvements
-
-Useful next steps:
-
-- Make Jordan a fuller second agent with his own memory stream.
-- Add a final interview mode to ask Maya what she remembers and what she learned.
-- Add a terminal "done for the day" state after the project reaches 100.
-- Add a stricter evaluation metric for whether retrieved memories actually change decisions.
-- Finish the full/no-retrieval/no-reflection comparison with GPT-5 live runs.
-- Make OpenAI mode generate richer final interviews while preserving JSON output.
 
 ## Paper Notes
 
