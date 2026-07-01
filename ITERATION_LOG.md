@@ -339,3 +339,161 @@ The next experiment should include information that appears once and must be rem
 - The assignment asks for a specific kind of surprise, but that instruction is stored only as a memory rather than repeated in the agent summary.
 
 For the next project iteration, add a memory-dependent task or an evaluation metric that checks whether retrieved memories actually change the chosen action.
+
+## Full Test Runs 006-008: Paper-Faithful Memory Test
+
+- Date: 2026-07-01
+- Code tested: working tree after paper-faithful guardrail and snapshot edits
+- Mode: deterministic
+- Full command: `python3 run.py --steps 80 --log logs/runs/run_006_paper_faithful_full.md --memory logs/runs/run_006_paper_faithful_memory.json --summary logs/runs/run_006_paper_faithful_summary.json`
+- No-retrieval command: `python3 run.py --steps 80 --top-k 0 --log logs/runs/run_007_paper_faithful_no_retrieval.md --memory logs/runs/run_007_paper_faithful_no_retrieval_memory.json --summary logs/runs/run_007_paper_faithful_no_retrieval_summary.json`
+- No-reflection command: `python3 run.py --steps 80 --reflection-interval 0 --log logs/runs/run_008_paper_faithful_no_reflection.md --memory logs/runs/run_008_paper_faithful_no_reflection_memory.json --summary logs/runs/run_008_paper_faithful_no_reflection_summary.json`
+
+### Implementation Change
+
+The earlier experiment gave the agent too much help through the current snapshot and guardrails. It exposed exact hunger, energy, focus, and progress numbers, and the static goal told the agent too directly what the assignment was supposed to demonstrate.
+
+This iteration changed that:
+
+- The snapshot now gives qualitative perception instead of exact internal meters.
+- The static summary no longer tells Maya to prove retrieval and reflection.
+- A professor gives a no-retrieval-baseline requirement once, early in the run.
+- Writing the final evidence section only counts as a baseline comparison if the decision reason mentions the remembered baseline requirement.
+- A later "push ahead or reset" moment tests whether reflection creates reusable self-knowledge beyond direct event recall.
+
+### Results
+
+| Metric | Run 006: Full | Run 007: No Retrieval | Run 008: No Reflection |
+| --- | ---: | ---: | ---: |
+| Project progress | 100 | 100 | 100 |
+| Final hunger | 4 | 4 | 4 |
+| Final energy | 6 | 4 | 8 |
+| Final focus | 3 | 9 | 5 |
+| Memory count | 180 | 180 | 164 |
+| Reflection count | 16 | 16 | 0 |
+| Avg. retrieved memories per step | 5.99 | 0.00 | 5.99 |
+| Reflection retrieval count | 170 | 0 | 0 |
+| Baseline requirement retrieval count | 244 | 0 | 122 |
+| Evidence section written | true | false | true |
+| Baseline comparison done | true | false | true |
+
+### Action Counts
+
+| Action | Run 006: Full | Run 007: No Retrieval | Run 008: No Reflection |
+| --- | ---: | ---: | ---: |
+| `eat_meal` | 13 | 11 | 13 |
+| `organize_notes` | 1 | 13 | 1 |
+| `rest` | 2 | 6 | 2 |
+| `review_notes` | 29 | 23 | 26 |
+| `take_break` | 15 | 7 | 16 |
+| `work_on_project` | 19 | 20 | 21 |
+| `write_evidence_section` | 1 | 0 | 1 |
+
+### Evidence From The Transcripts
+
+- In Run 006, Professor Lin's requirement appears once at step 6. The full agent repeatedly retrieves it and later chooses `write_evidence_section` because Maya remembers the no-retrieval-baseline requirement.
+- In Run 007, the same professor event appears in the observation stream, but retrieval is disabled. Maya reviews notes repeatedly with the reason that no specific remembered requirement is available, and never chooses `write_evidence_section`.
+- In Run 008, direct retrieval still recovers the professor requirement, so Maya writes the evidence section. But at the "push ahead or reset" moment, the no-reflection agent chooses `work_on_project` while the full agent chooses `take_break` because it retrieves a reflection about reset breaks and focus.
+
+### Interpretation
+
+This is a stronger match to the paper than the earlier runs. The current state no longer acts like an all-knowing dashboard, and the main success condition depends on the memory stream.
+
+The result is nuanced:
+
+- Retrieval matters for remembering a one-time instruction that disappears from the current snapshot.
+- Reflection matters for turning repeated experience into reusable guidance.
+- Generic project completion is still too weak as an evaluation metric, because every variant reached progress 100.
+
+### Decision
+
+Use Run 006 as the current best sample run and keep Runs 007 and 008 as the main baselines. In the writeup, avoid claiming that the architecture is necessary for simple task completion. The better claim is that the paper's architecture supports memory-dependent obligations, reflection-driven behavior changes, and an inspectable causal trail from past experience to current action.
+
+## Iteration 006-008 Postmortem And Next Test Plan
+
+### Why This Iteration Happened
+
+The earlier version felt too guided. The current snapshot exposed exact hidden state, and the static agent summary told Maya too directly that the project should prove memory, retrieval, and reflection. That made the behavior look more competent than the paper's architecture alone deserved credit for.
+
+This iteration was an attempt to remove that extra help and test a sharper question:
+
+Can the agent use memory retrieval to act on information that appeared once and is no longer visible in the current state?
+
+### How The Iteration Ran
+
+The iteration ran three deterministic 80-step comparisons:
+
+- Full architecture: memory retrieval and reflection enabled.
+- No retrieval: reflection still enabled, but top-k retrieval set to 0.
+- No reflection: retrieval still enabled, but reflection interval set to 0.
+
+The environment included one important early instruction from Professor Lin: the final report should compare the full agent with a no-retrieval baseline. Later, when Maya reached the final evidence section, the environment did not repeat that requirement. Maya had to recover it from memory.
+
+The environment also included a later "push ahead or reset" moment. That was meant to test whether reflection could produce reusable self-knowledge, not just factual recall.
+
+### What Was Good About It
+
+- The snapshot is less leaky. Maya sees qualitative cues like hunger, usable energy, and project stage instead of exact hidden meters.
+- The one-time professor instruction creates a real memory-dependent obligation.
+- The no-retrieval baseline gives a clear contrast: it still completes generic project work, but it fails to write the final evidence section.
+- The no-reflection baseline gives a different contrast: it remembers the explicit professor requirement through retrieval, but lacks the reflection-driven reset-break decision.
+- The transcript makes the causal trail inspectable. We can point to the retrieved memory or reflection that shaped a later action.
+
+The strongest result is not "the full agent finished the project." Every variant did that. The stronger result is that the full agent remembered and used a past requirement that the no-retrieval agent could not access.
+
+### What Was Bad Or Still Weak
+
+- This is still not strong evidence of believable human behavior. It is stronger evidence of the memory architecture working.
+- The deterministic policy has hand-authored decision logic, so the run is useful for testing architecture but not enough for a believability claim.
+- The world is still solitary. The paper's most compelling behavior comes from social coordination, information spreading, and agents remembering interactions with each other.
+- The metric "project progress reached 100" is too easy and should not be used as the main success claim.
+- The baseline requirement retrieval count is inflated by repeated retrieval of the same important memory. That shows persistence, but not necessarily natural behavior.
+- Maya's actions are still bounded by a small action list, so some choices are believable only at the coarse level.
+
+The honest claim after this iteration is:
+
+The sandbox now gives good evidence that memory retrieval and reflection can affect later behavior in an inspectable way. It does not yet give strong evidence that the agent is broadly believable as a human.
+
+### What We Should Test Next
+
+The next experiment should test believability through a small social coordination task, not by adding a large world.
+
+Recommended next setup:
+
+- Add one more student agent, Jordan.
+- Professor Lin gives Maya a requirement once: compare the full agent with a no-retrieval baseline.
+- Jordan separately has useful baseline information or promises to run the no-retrieval comparison.
+- Maya and Jordan have a chance to meet later.
+- Maya must remember to ask Jordan for the baseline result.
+- The final evidence section only counts as complete if Maya uses both the professor's requirement and Jordan's transferred information.
+
+This would test a more paper-like behavior:
+
+- Remembering a social obligation.
+- Coordinating with another agent.
+- Transferring information through conversation.
+- Using remembered conversation later in a written task.
+
+### Proposed Baselines For The Next Test
+
+| Run | Purpose |
+| --- | --- |
+| Full two-agent system | Tests whether memory, reflection, and conversation support coordination. |
+| No retrieval | Tests whether Maya fails to remember the professor instruction or Jordan's baseline information. |
+| No reflection | Tests whether Maya remembers facts but fails to adapt strategy after friction. |
+| No social exchange | Tests whether the second agent actually matters, not just the extra scripted event. |
+
+### Metrics For The Next Test
+
+Better metrics than project progress:
+
+- Did Maya attend or remember the relevant conversation?
+- Did Jordan's information enter Maya's memory stream?
+- Did Maya later retrieve Jordan's information?
+- Did the final evidence section include both the professor requirement and Jordan's baseline result?
+- Did reflection change a later action that was not directly forced by the current observation?
+- Does the transcript show a believable reason for the coordination, or only a scripted handoff?
+
+### Next Decision
+
+Do not add a large multi-agent world. Add exactly one more agent and one focused social coordination requirement. The goal should be to show one small version of the paper's social believability argument while keeping the run easy to inspect.

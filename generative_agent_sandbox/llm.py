@@ -45,6 +45,8 @@ class DeterministicLLM(BaseLLM):
             score = 8.0
         if any(word in text_lower for word in ["deadline", "assignment", "professor", "evidence"]):
             score += 3
+        if any(word in text_lower for word in ["baseline", "no-retrieval", "compare"]):
+            score += 3
         if any(word in text_lower for word in ["ignored food", "stomach", "foggy", "drifting"]):
             score += 2
         if any(word in text_lower for word in ["progress", "reflection", "retrieval", "memory"]):
@@ -61,72 +63,108 @@ class DeterministicLLM(BaseLLM):
         observation: str,
         retrieved: list[RetrievalResult],
     ) -> Decision:
-        combined = " ".join([world_state, observation, *[item.memory.text for item in retrieved]]).lower()
-        state = _parse_state(world_state)
+        current = " ".join([world_state, observation]).lower()
+        retrieved_text = " ".join(item.memory.text for item in retrieved).lower()
+        retrieved_reflections = " ".join(
+            item.memory.text for item in retrieved if item.memory.kind == "reflection"
+        ).lower()
 
-        if state["progress"] >= 100 and state["hunger"] < 8 and state["energy"] > 2:
-            return Decision.from_action_id(
-                "review_notes",
-                reason="The project has reached completion, so the most valuable work is documenting surprises.",
-            )
+        ready_for_evidence = (
+            "final report section" in current
+            or "evidence section is still blank" in current
+            or "implementation feels complete" in current
+        )
+        remembered_baseline_requirement = (
+            "no-retrieval baseline" in retrieved_text
+            or "no retrieval baseline" in retrieved_text
+            or "compare the full agent" in retrieved_text
+            or "compare full" in retrieved_text
+        )
 
-        if state["hunger"] >= 8 or "stomach" in combined or "skipped a meal" in combined:
+        if "very hungry" in current or "stomach" in current or "skipped a meal" in current:
             return Decision.from_action_id(
                 "eat_meal",
-                reason="Hunger is starting to threaten focus, and food has been a recurring constraint.",
+                reason="Maya directly notices hunger, so eating is the most believable next action.",
             )
 
-        if state["energy"] <= 2 or "mentally foggy" in combined:
+        if "energy feels low" in current or "mentally foggy" in current:
             return Decision.from_action_id(
                 "rest",
-                reason="The memories suggest low energy makes Maya reread without making progress.",
+                reason="Maya directly notices low energy, so resting is more believable than pushing ahead.",
             )
 
-        if "class reminder" in combined or "discussion starts soon" in combined:
+        if "professor lin says" in current or "discussion starts soon" in current:
             return Decision.from_action_id(
                 "attend_discussion",
-                reason="The reminder is time-sensitive and directly related to the project.",
+                reason="The current discussion contains assignment guidance Maya should hear.",
             )
 
-        if "professor" in combined or "clearer evidence" in combined:
+        if "clearer evidence" in current:
             return Decision.from_action_id(
                 "work_on_project",
                 reason="The professor's note makes the implementation evidence more important than generic progress.",
             )
 
-        if "same action" in combined or "appeared in her log several times" in combined:
+        if "same action" in current or "appeared in her log several times" in current:
             return Decision.from_action_id(
                 "organize_notes",
                 reason="The log suggests repetition, so Maya should adjust the plan instead of repeating blindly.",
             )
 
-        if state["focus"] <= 2 or "attention keeps drifting" in combined:
+        if "attention is fragile" in current or "attention keeps drifting" in current:
             return Decision.from_action_id(
                 "take_break",
-                reason="The memory stream shows focus drops when Maya pushes through fatigue.",
+                reason="Maya directly notices fragile attention, so a reset break is believable.",
             )
 
-        if "notes are scattered" in combined or "checklist" in combined:
+        if "evidence section has a draft" in current:
+            return Decision.from_action_id(
+                "review_notes",
+                reason="The evidence section already has a draft, so Maya reviews notes instead of rewriting it.",
+            )
+
+        if ready_for_evidence and remembered_baseline_requirement:
+            return Decision.from_action_id(
+                "write_evidence_section",
+                reason=(
+                    "Maya remembers Professor Lin's requirement to compare the full agent "
+                    "with a no-retrieval baseline, so the evidence section should address that."
+                ),
+            )
+
+        if (
+            "breaks seem to help" in retrieved_reflections
+            or "focus appears tied to managing basic needs" in retrieved_reflections
+        ) and ("focus feels workable" in current or "push ahead or reset" in current):
+            return Decision.from_action_id(
+                "take_break",
+                reason=(
+                    "A retrieved reflection says short reset breaks help Maya recover focus, "
+                    "so she uses one before forcing more work."
+                ),
+            )
+
+        if "notes are scattered" in current or "checklist" in current:
             return Decision.from_action_id(
                 "organize_notes",
                 reason="Scattered notes are blocking progress more than effort is.",
             )
 
-        if "sticky note" in combined or "what changed because of reflection" in combined:
+        if ready_for_evidence and not remembered_baseline_requirement:
             return Decision.from_action_id(
                 "review_notes",
-                reason="The assignment emphasizes surprises, so Maya should preserve evidence while it is fresh.",
+                reason="Maya sees that the report needs evidence, but no specific remembered requirement is available.",
             )
 
-        if "quiet desk" in combined or "library" in combined or state["progress"] < 65:
+        if "quiet desk" in current or "library" in current or "early implementation" in current:
             return Decision.from_action_id(
                 "work_on_project",
-                reason="The retrieved memories point to the library as the best place for focused project progress.",
+                reason="The current setting supports focused project work.",
             )
 
         return Decision.from_action_id(
-            "review_notes",
-            reason="The project is far enough along that documenting surprises is the highest-value next step.",
+            "work_on_project",
+            reason="With no stronger cue available, Maya continues the project work.",
         )
 
     def reflect(self, *, recent_memories: list[Memory]) -> list[ReflectionDraft]:
@@ -144,6 +182,18 @@ class DeterministicLLM(BaseLLM):
                     text=f"By step {latest_step}, Maya's focus appears tied to managing basic needs; ignoring meals makes project work less effective.",
                     evidence_ids=ids_by_keyword(["hungry", "stomach", "meal", "food", "snack"]),
                     importance=8.0,
+                )
+            )
+
+        if "no-retrieval baseline" in text_blob or "no retrieval baseline" in text_blob:
+            drafts.append(
+                ReflectionDraft(
+                    text=(
+                        f"By step {latest_step}, Maya has a concrete reporting requirement: "
+                        "compare the full agent with a no-retrieval baseline rather than only claiming memory matters."
+                    ),
+                    evidence_ids=ids_by_keyword(["no-retrieval", "no retrieval", "baseline", "compare"]),
+                    importance=10.0,
                 )
             )
 
@@ -245,10 +295,10 @@ class OpenAIChatLLM(BaseLLM):
             for item in retrieved
         )
         prompt = f"""
-You control one text-based generative agent. Keep the agent grounded in the provided state and memories.
+You control one text-based generative agent. Keep the agent grounded in the provided perceptual state and memories.
 Return strict JSON with keys: action_id, reason.
 action_id must be exactly one of the allowed ids below. Do not invent ids.
-Use go_to_* only when relocation itself is the goal. If Maya needs food, choose eat_meal or buy_snack. If Maya needs energy, choose rest. If Maya needs project progress, choose work_on_project.
+Use retrieved memories when they contain a specific remembered requirement. Do not assume hidden numeric state.
 
 Allowed actions:
 {action_schema_text()}
@@ -271,12 +321,6 @@ Retrieved memories:
             if action_id is None:
                 raise ValueError(f"Unknown action id: {data}")
             reason = str(data["reason"])
-            action_id, reason = _repair_action_choice(
-                action_id,
-                world_state=world_state,
-                observation=observation,
-                reason=reason,
-            )
             return Decision.from_action_id(action_id, reason=reason)
         except Exception:
             return self.fallback.choose_action(
@@ -351,82 +395,6 @@ def build_llm(mode: str) -> BaseLLM:
     if mode == "gateway":
         return OpenAIChatLLM(provider="gateway")
     raise ValueError(f"Unknown LLM mode: {mode}")
-
-
-def _parse_state(world_state: str) -> dict[str, int]:
-    defaults = {"hunger": 0, "energy": 5, "focus": 5, "progress": 0}
-    for key in defaults:
-        match = re.search(rf"{key}=(\d+)", world_state)
-        if match:
-            defaults[key] = int(match.group(1))
-    return defaults
-
-
-def _repair_action_choice(
-    action_id: str,
-    *,
-    world_state: str,
-    observation: str,
-    reason: str,
-) -> tuple[str, str]:
-    state = _parse_state(world_state)
-    observation_lower = observation.lower()
-    reason_lower = reason.lower()
-
-    if (
-        state["hunger"] >= 8
-        or "stomach" in observation_lower
-        or "skipped a meal" in observation_lower
-    ) and action_id not in {"eat_meal", "buy_snack"}:
-        return (
-            "eat_meal",
-            f"{reason} Guardrail: hunger is critical, so Maya eats before continuing.",
-        )
-
-    if (state["energy"] <= 2 or "mentally foggy" in observation_lower) and action_id != "rest":
-        return (
-            "rest",
-            f"{reason} Guardrail: energy is too low for productive work, so Maya rests first.",
-        )
-
-    if (
-        state["focus"] <= 1
-        or "attention keeps drifting" in observation_lower
-    ) and action_id == "work_on_project":
-        return (
-            "take_break",
-            f"{reason} Guardrail: focus is depleted, so Maya resets before doing more work.",
-        )
-
-    if action_id == "go_to_cafe" and (
-        state["hunger"] >= 5 or "food" in reason_lower or "eat" in reason_lower
-    ):
-        return (
-            "eat_meal",
-            f"{reason} Grounding: going to the cafe for food is executed as eating a meal.",
-        )
-
-    if action_id == "go_to_dorm" and (
-        state["energy"] <= 5 or "rest" in reason_lower or "energy" in reason_lower
-    ):
-        return (
-            "rest",
-            f"{reason} Grounding: going to the dorm for recovery is executed as resting.",
-        )
-
-    if (
-        action_id == "go_to_library"
-        and state["progress"] < 100
-        and state["hunger"] < 7
-        and state["energy"] >= 3
-        and state["focus"] >= 3
-    ):
-        return (
-            "work_on_project",
-            f"{reason} Grounding: going to the library to advance the assignment is executed as project work.",
-        )
-
-    return action_id, reason
 
 
 def _env_truthy(name: str) -> bool:

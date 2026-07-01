@@ -91,22 +91,36 @@ python3 run.py --steps 80 --llm gateway --top-k 0
 
 ## Current Sample Run
 
-The included sample run uses Vercel AI Gateway mode for 80 steps.
+The current included sample run uses deterministic mode for 80 steps with a more paper-faithful setup:
+
+- The snapshot uses qualitative perception instead of exact hidden numbers.
+- A professor gives a requirement once early in the run.
+- The final evidence section succeeds only if Maya remembers the no-retrieval baseline requirement.
 
 Summary:
 
 ```json
 {
   "steps": 80,
-  "final_location": "Cafe",
-  "final_hunger": 2,
-  "final_energy": 8,
-  "final_focus": 7,
+  "final_location": "Dorm",
+  "final_hunger": 4,
+  "final_energy": 6,
+  "final_focus": 3,
   "final_project_progress": 100,
-  "memory_count": 184,
-  "reflection_count": 20
+  "memory_count": 180,
+  "reflection_count": 16,
+  "avg_retrieved_memories": 5.99,
+  "baseline_requirement_retrieval_count": 244,
+  "evidence_section_written": true,
+  "baseline_comparison_done": true
 }
 ```
+
+Artifacts:
+
+- `logs/runs/run_006_paper_faithful_full.md`
+- `logs/runs/run_006_paper_faithful_memory.json`
+- `logs/runs/run_006_paper_faithful_summary.json`
 
 The transcript shows retrieval scores for each selected memory:
 
@@ -118,21 +132,27 @@ Each retrieved memory includes the total score plus the component scores.
 
 ## Baseline Runs
 
-I also ran 80-step gateway baselines with reflection disabled and retrieval disabled.
+I also ran 80-step deterministic baselines with retrieval disabled and reflection disabled.
 
-| Metric | Full System | No Reflection | No Retrieval |
+| Metric | Full System | No Retrieval | No Reflection |
 | --- | ---: | ---: | ---: |
 | Project progress | 100 | 100 | 100 |
-| Final hunger | 2 | 8 | 5 |
-| Final energy | 8 | 10 | 8 |
-| Final focus | 7 | 9 | 8 |
-| Reflection memories | 20 | 0 | 20 |
-| Avg. retrieved memories per step | 5.99 | 5.99 | 0 |
-| `review_notes` actions | 5 | 0 | 9 |
+| Final hunger | 4 | 4 | 4 |
+| Final energy | 6 | 4 | 8 |
+| Final focus | 3 | 9 | 5 |
+| Reflection memories | 16 | 16 | 0 |
+| Avg. retrieved memories per step | 5.99 | 0.00 | 5.99 |
+| Baseline requirement retrievals | 244 | 0 | 122 |
+| Evidence section written | true | false | true |
+| Baseline comparison done | true | false | true |
+| `take_break` actions | 15 | 7 | 16 |
+| `write_evidence_section` actions | 1 | 0 | 1 |
 
-Both baselines completed the project, which is an important limitation: in this simplified world, structured actions, current observations, and guardrails are enough for raw task completion. Reflection and retrieval still matter for the assignment because they make the internal process inspectable. The full system shows retrieved memories influencing decisions, while the baselines reveal how much behavior can come from the current state and fixed agent goal alone.
+The no-retrieval baseline still completed the generic project, but it missed the one-time professor requirement and never wrote the final evidence section. That is the cleaner test: the paper's retrieval mechanism matters when later behavior depends on a past event that is no longer visible in the current snapshot.
 
-The baselines exposed a weakness in the experiment design: the current state is informative enough that the agent can often act well without memory retrieval. A stronger next experiment would add a requirement that appears once and must be remembered later, such as a professor's specific instruction or a changing resource constraint.
+The no-reflection baseline remembered the professor's explicit requirement through direct retrieval, so it still wrote the evidence section. Reflection mattered in a different place: at the "push ahead or reset" moment, the full agent retrieved a reflection about breaks and chose `take_break`, while the no-reflection agent chose `work_on_project`.
+
+This makes the result more honest. Project progress alone is too easy in this toy world; memory-dependent obligations and reflection-specific behavior are better evidence for the architecture.
 
 ## Architecture
 
@@ -178,25 +198,21 @@ Those pieces are interesting, but they would make the project larger without pro
 
 ## What Surprised Me So Far
 
-Even in deterministic mode, the architecture creates visible feedback loops.
+The biggest surprise was how easy it was to accidentally make the environment too helpful. Exact hunger, energy, focus, and project-progress numbers let the agent act competently without relying much on memory. The current version keeps those internal meters for evaluation, but the agent only sees qualitative descriptions.
 
-One useful surprise was that the agent began retrieving early reflections about documenting evidence again and again once the project was mostly complete. This made the agent shift from implementation work to transcript review. That is good in one sense: reflection changed later behavior. But it also shows a failure mode: high-importance reflections can dominate retrieval for a long time.
+The second surprise was that retrieval and reflection help in different ways. Retrieval was enough to recover the professor's explicit no-retrieval-baseline requirement. Reflection mattered when the agent had to generalize from prior experience, such as choosing a reset break after noticing that focus depends on managing basic needs.
 
-Another surprise came from an implementation bug. An action that said "rest before doing more project work" was initially interpreted as work because of the word "work." The transcript exposed this quickly because the agent kept becoming more tired while supposedly resting. That reinforced why a visible run log is useful for agent debugging.
-
-The first live gateway run surfaced a sharper failure mode. Maya repeatedly reasoned that food and rest were needed, but the model often emitted vague actions like `go`, `go to Cafe`, or `go to Dorm`. The environment could not reliably translate those into eating or resting, so most outcomes had only a modest effect.
-
-Adding a structured action schema fixed that grounding problem, but revealed a second issue: Maya would sometimes keep working even when energy and focus were depleted. The current version adds a small needs-aware guardrail, which produced a much healthier 80-step run: project progress reached 100, hunger ended at 2, energy at 8, and focus at 7.
-
-The ablation runs also created a useful surprise: in this simplified environment, removing reflection or retrieval did not prevent task completion. That means project progress alone is not a good enough measure of whether the paper's architecture matters. The stronger evidence is qualitative: the full system creates inspectable memory retrieval, high-level reflection, and explicit documentation behavior.
+The baselines also changed the claim. The project should not say that retrieval and reflection are required for all task completion. It should say that the paper's architecture creates a readable memory trail, supports obligations that depend on past events, and lets reflections become reusable knowledge.
 
 ## Next Improvements
 
 Useful next steps:
 
+- Add one more agent for a focused social coordination test.
 - Add a final interview mode to ask Maya what she remembers and what she learned.
 - Add a terminal "done for the day" state after the project reaches 100.
 - Add a stricter evaluation metric for whether retrieved memories actually change decisions.
+- Run the same full/no-retrieval/no-reflection comparison with a live LLM backend.
 - Make OpenAI mode generate richer final interviews while preserving JSON output.
 
 ## Paper Notes

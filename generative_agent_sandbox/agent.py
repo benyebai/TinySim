@@ -30,7 +30,7 @@ class GenerativeAgent:
     def seed_memories(self) -> None:
         seeds = [
             "Maya Chen is a student researcher building a small generative-agent sandbox.",
-            "Maya wants the project to show memory, retrieval, and reflection rather than a flashy visual world.",
+            "Maya wants the project to be simple enough that another student can inspect a full run.",
             "Maya tends to work best when she alternates focused library sessions with short reset breaks.",
             "Maya is worried that the final writeup needs concrete surprises from an actual run.",
         ]
@@ -115,7 +115,7 @@ class GenerativeAgent:
         if not should_reflect:
             return []
 
-        recent = self.memory.recent(24)
+        recent = self.memory.recent(50)
         drafts = self.llm.reflect(recent_memories=recent)
         reflections: list[Memory] = []
         existing_reflections = {

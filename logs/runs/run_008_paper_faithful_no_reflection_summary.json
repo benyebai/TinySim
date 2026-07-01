@@ -1,0 +1,24 @@
+{
+  "steps": 80,
+  "final_location": "Park",
+  "final_hunger": 4,
+  "final_energy": 8,
+  "final_focus": 5,
+  "final_project_progress": 100,
+  "memory_count": 164,
+  "reflection_count": 0,
+  "avg_retrieved_memories": 5.99,
+  "reflection_retrieval_count": 0,
+  "baseline_requirement_retrieval_count": 122,
+  "evidence_section_written": true,
+  "baseline_comparison_done": true,
+  "action_counts": {
+    "eat_meal": 13,
+    "organize_notes": 1,
+    "rest": 2,
+    "review_notes": 26,
+    "take_break": 16,
+    "work_on_project": 21,
+    "write_evidence_section": 1
+  }
+}

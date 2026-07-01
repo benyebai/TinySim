@@ -16,13 +16,14 @@ class WorldSnapshot:
     focus: int
     progress: int
     mood: str
+    evidence_section_written: bool
 
     def describe(self) -> str:
+        body_state = _body_state(self.hunger, self.energy, self.focus)
+        project_state = _project_state(self.progress, self.evidence_section_written)
         return (
             f"It is {self.time_label}. Maya is at the {self.location}. "
-            f"State: hunger={self.hunger}/10, energy={self.energy}/10, "
-            f"focus={self.focus}/10, project_progress={self.progress}/100, "
-            f"mood={self.mood}."
+            f"{body_state} {project_state} Maya's mood is {self.mood}."
         )
 
 
@@ -40,6 +41,8 @@ class CampusWorld:
         self.progress = 0
         self.mood = "curious"
         self.last_action = "woke up and checked the project notebook"
+        self.evidence_section_written = False
+        self.baseline_comparison_done = False
 
     def snapshot(self, step: int) -> WorldSnapshot:
         return WorldSnapshot(
@@ -51,6 +54,7 @@ class CampusWorld:
             focus=self.focus,
             progress=self.progress,
             mood=self.mood,
+            evidence_section_written=self.evidence_section_written,
         )
 
     def time_label(self, step: int) -> str:
@@ -63,27 +67,31 @@ class CampusWorld:
 
     def observe(self, step: int) -> str:
         snapshot = self.snapshot(step)
+        scheduled = {
+            6: (
+                "During discussion, Professor Lin says the final report should compare "
+                "the full agent with a no-retrieval baseline, not just claim memory matters."
+            ),
+            12: "Maya notices her project notes are scattered across three documents.",
+            18: "A quiet desk opens near the library window.",
+            21: "Maya reaches a pause between work sessions and wonders whether to push ahead or reset.",
+            24: "The cafe line is short and the smell of soup reminds Maya she skipped a meal.",
+            31: "Maya rereads the assignment note that says the surprises matter most.",
+            37: "A professor's comment in the margin asks for clearer evidence of memory retrieval.",
+            44: "The park is unusually quiet, making it easier to think without pressure.",
+            52: "Maya notices that the same action has appeared in her log several times.",
+            61: "Maya reaches the final report section and needs to decide what evidence belongs there.",
+            70: "The library is closing soon, so Maya needs to decide what matters most now.",
+        }
+        if step in scheduled:
+            return scheduled[step]
+
         if self.hunger >= 8:
             return "Maya's stomach growls and she realizes she has been ignoring food."
         if self.energy <= 2:
             return "Maya feels mentally foggy and keeps rereading the same line."
         if self.focus <= 2:
             return "Maya's attention keeps drifting away from the simulation project."
-
-        scheduled = {
-            6: "A class reminder says the behavioral modeling discussion starts soon.",
-            12: "Maya notices her project notes are scattered across three documents.",
-            18: "A quiet desk opens near the library window.",
-            24: "The cafe line is short and the smell of soup reminds Maya she skipped a meal.",
-            31: "Maya rereads the assignment note that says the surprises matter most.",
-            37: "A professor's comment in the margin asks for clearer evidence of memory retrieval.",
-            44: "The park is unusually quiet, making it easier to think without pressure.",
-            52: "Maya notices that the same action has appeared in her log several times.",
-            61: "A sticky note on Maya's laptop says: show the reader what changed because of reflection.",
-            70: "The library is closing soon, so Maya needs to decide what matters most now.",
-        }
-        if step in scheduled:
-            return scheduled[step]
 
         by_location = {
             "Dorm": [
@@ -149,6 +157,21 @@ class CampusWorld:
             self.focus = max(0, self.focus - 1)
             self.mood = "reflective"
             result = "Maya annotates the transcript and preserves evidence for the writeup."
+        elif action_id == "write_evidence_section":
+            self.progress = min(100, self.progress + 6)
+            self.hunger = min(10, self.hunger + 1)
+            self.energy = max(0, self.energy - 1)
+            self.focus = max(0, self.focus - 1)
+            self.mood = "analytical"
+            self.evidence_section_written = True
+            if _mentions_baseline_requirement(decision.reason):
+                self.baseline_comparison_done = True
+                result = (
+                    "Maya writes the evidence section and explicitly compares the full run "
+                    "with a no-retrieval baseline."
+                )
+            else:
+                result = "Maya writes a general evidence section for the report."
         elif action_id == "work_on_project":
             gain = 4 if self.location == "Library" else 2
             if self.focus >= 5 and self.energy >= 4:
@@ -209,3 +232,56 @@ class CampusWorld:
             if location.lower() in destination_lower:
                 return location
         return self.location
+
+
+def _body_state(hunger: int, energy: int, focus: int) -> str:
+    cues: list[str] = []
+    if hunger >= 8:
+        cues.append("Maya feels very hungry")
+    elif hunger >= 5:
+        cues.append("Maya feels a little hungry")
+    else:
+        cues.append("Maya is not especially hungry")
+
+    if energy <= 2:
+        cues.append("her energy feels low")
+    elif energy >= 7:
+        cues.append("her energy feels steady")
+    else:
+        cues.append("her energy feels usable")
+
+    if focus <= 2:
+        cues.append("her attention is fragile")
+    elif focus >= 7:
+        cues.append("her focus feels sharp")
+    else:
+        cues.append("her focus feels workable")
+
+    return ", ".join(cues) + "."
+
+
+def _project_state(progress: int, evidence_section_written: bool) -> str:
+    if progress < 25:
+        return "The project is still in early implementation."
+    if progress < 60:
+        return "The project has a working core, but the evidence is thin."
+    if progress < 90:
+        return "The project mostly works, and the report needs stronger evidence."
+    if evidence_section_written:
+        return "The implementation feels complete, and the evidence section has a draft."
+    return "The implementation feels complete, but the final evidence section is still blank."
+
+
+def _mentions_baseline_requirement(reason: str) -> bool:
+    reason_lower = reason.lower()
+    return any(
+        phrase in reason_lower
+        for phrase in [
+            "no-retrieval",
+            "no retrieval",
+            "without retrieval",
+            "baseline",
+            "compare the full",
+            "compare full",
+        ]
+    )

@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+from collections import Counter
 from pathlib import Path
 from collections.abc import Callable
 
@@ -13,9 +14,8 @@ from .models import StepLog
 
 AGENT_SUMMARY = (
     "Maya Chen is a careful, curious student researcher. She is building a small "
-    "generative-agent sandbox for a take-home assignment. She wants the simulation "
-    "to produce readable evidence that memory retrieval and reflection affected "
-    "later behavior. She values simple, inspectable systems over flashy scope."
+    "generative-agent sandbox for a take-home assignment. She values simple, "
+    "inspectable systems over flashy scope."
 )
 
 
@@ -115,6 +115,20 @@ def write_memory_json(path: Path, agent: GenerativeAgent) -> None:
 def write_summary_json(path: Path, *, agent: GenerativeAgent, world: CampusWorld, logs: list[StepLog]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     reflection_count = sum(1 for memory in agent.memory.memories if memory.kind == "reflection")
+    action_counts = Counter(entry.decision.action_id for entry in logs)
+    retrieved_counts = [len(entry.retrieved) for entry in logs]
+    reflection_retrieval_count = sum(
+        1
+        for entry in logs
+        for result in entry.retrieved
+        if result.memory.kind == "reflection"
+    )
+    baseline_requirement_retrieval_count = sum(
+        1
+        for entry in logs
+        for result in entry.retrieved
+        if _mentions_baseline_requirement(result.memory.text)
+    )
     path.write_text(
         json.dumps(
             {
@@ -126,8 +140,33 @@ def write_summary_json(path: Path, *, agent: GenerativeAgent, world: CampusWorld
                 "final_project_progress": world.progress,
                 "memory_count": len(agent.memory.memories),
                 "reflection_count": reflection_count,
+                "avg_retrieved_memories": (
+                    round(sum(retrieved_counts) / len(retrieved_counts), 2)
+                    if retrieved_counts
+                    else 0
+                ),
+                "reflection_retrieval_count": reflection_retrieval_count,
+                "baseline_requirement_retrieval_count": baseline_requirement_retrieval_count,
+                "evidence_section_written": world.evidence_section_written,
+                "baseline_comparison_done": world.baseline_comparison_done,
+                "action_counts": dict(sorted(action_counts.items())),
             },
             indent=2,
         ),
         encoding="utf-8",
+    )
+
+
+def _mentions_baseline_requirement(text: str) -> bool:
+    text_lower = text.lower()
+    return any(
+        phrase in text_lower
+        for phrase in [
+            "no-retrieval",
+            "no retrieval",
+            "without retrieval",
+            "baseline",
+            "compare the full",
+            "compare full",
+        ]
     )
