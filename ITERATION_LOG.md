@@ -340,6 +340,31 @@ The next experiment should include information that appears once and must be rem
 
 For the next project iteration, add a memory-dependent task or an evaluation metric that checks whether retrieved memories actually change the chosen action.
 
+## Qualitative Snapshot Redesign
+
+- Date: 2026-07-01
+- Goal: make the world state less like a perfect dashboard
+
+### What Failed
+
+The early runs exposed a prompt-design problem: the agent could see exact internal meters such as hunger, energy, focus, and project progress. That made the simulation easier than intended. The model could make competent choices from the current state alone, which weakened the evidence for memory retrieval.
+
+This was especially clear after the no-retrieval baseline. Even with retrieval disabled, Maya could still complete the generic project because the current prompt told her enough about her needs and progress.
+
+### What Changed In Code
+
+- `CampusWorld` still tracks numeric hunger, energy, focus, and progress internally for action effects and summary metrics.
+- `WorldSnapshot.describe()` no longer exposes those raw numbers to the agent.
+- `_body_state()` converts hunger, energy, and focus into qualitative cues such as "Maya feels very hungry" or "her attention is fragile."
+- `_project_state()` converts project progress into broad phases such as early implementation, thin evidence, or ready to write up.
+- `_jordan_state()` converts Jordan's internal status into a qualitative social cue, such as whether waiting on Jordan is still useful.
+
+### Why It Matters
+
+This made the setup closer to the spirit of the paper. Maya still has a current perception, but she does not get a perfect control panel. Specific obligations, lessons, and social patterns have to survive through memory, retrieval, and reflection rather than being fully restated as numbers every step.
+
+This change did not prove retrieval by itself. It made the later Jordan experiment more meaningful by reducing how much the current prompt could solve on its own.
+
 ## Live-Only Reset
 
 - Date: 2026-07-01
@@ -477,7 +502,7 @@ This is the quick-read version of the project history. Each iteration should be 
 | Run 003 | Live Gateway run with structured actions plus guardrails. | Maya reached progress 100, but the task became too easy. The agent kept acting after completion, and we did not yet know whether reflection caused useful behavior. | Added no-reflection and no-retrieval ablations. | Needed better evidence than project progress. |
 | Run 004 | Live no-reflection ablation. | The no-reflection agent still completed the project. This weakened any claim that reflection was required for simple task completion. | Reframed reflection as inspectability and higher-level self-explanation, not raw completion. | Needed a task where reflection changes a later action, not just a transcript explanation. |
 | Run 005 | Live no-retrieval baseline. | The no-retrieval agent still completed the project because current state, observations, and action schema were too informative. | Planned a memory-dependent task where a one-time requirement must matter later. | Needed a cleaner test where retrieval and reflection affect behavior, not only logs. |
-| Paper-faithful memory redesign | Reduced leaky state, added one-time professor requirement, and added baseline-comparison success metrics. | Deterministic development runs looked too clean because the policy was hand-authored. They were useful for shaping the environment but not acceptable as final evidence. | Removed deterministic runs from submission artifacts and reset the project to live-LLM-only evidence. | Needed to rerun the core comparison with real model behavior. |
+| Paper-faithful memory redesign | Reduced leaky state, replaced raw numeric snapshots with qualitative cues, added one-time professor requirement, and added baseline-comparison success metrics. | Deterministic development runs looked too clean because the policy was hand-authored. They were useful for shaping the environment but not acceptable as final evidence. | Removed deterministic runs from submission artifacts and reset the project to live-LLM-only evidence. | Needed to rerun the core comparison with real model behavior. |
 | Jordan social-reflection redesign | Added lightweight Jordan coordination so reflection could form a social lesson. | The deterministic version produced the desired causal story, but live runs exposed that the real model could ask too early, over-wait, miss in-person chances, or bury reflections under repeated messages. | Enforced what Jordan knows by stage, removed action rationales from memory, made recency based on memory creation, added qualitative failed-follow-up cues, and sharpened the live reflection prompt. | Needed fresh GPT-5 full/no-retrieval/no-reflection runs. |
 | Runs 012-014 | Re-ran the Jordan social-reflection experiment with live GPT-5. | GPT-5 needed request/parsing fixes, and after success it still repeated evidence-writing too often. | Added GPT-5 request handling, importance-label parsing, and live retry handling. | Add a terminal "done for the day" state and make Jordan a fuller second agent if continuing. |
 

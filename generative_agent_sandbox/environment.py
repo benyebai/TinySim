@@ -23,6 +23,7 @@ class WorldSnapshot:
     jordan_vague_replies: int
 
     def describe(self) -> str:
+        # Keep raw meters internal; the agent sees qualitative cues instead.
         body_state = _body_state(self.hunger, self.energy, self.focus)
         project_state = _project_state(self.progress, self.evidence_section_written)
         jordan_state = _jordan_state(

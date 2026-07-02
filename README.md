@@ -206,6 +206,8 @@ I also kept the baselines. They made the story more complicated, but much more h
 
 The biggest surprise was how easy it was to accidentally make the environment too helpful. When the agent saw exact hunger, energy, focus, and progress numbers, it could behave well without using memory much. The current version keeps those numbers for evaluation, but gives Maya more qualitative observations.
 
+That change lives in `generative_agent_sandbox/environment.py`: `CampusWorld` still tracks numeric hunger, energy, focus, and progress internally, but `WorldSnapshot.describe()` now exposes phrases from `_body_state()`, `_project_state()`, and `_jordan_state()` instead of raw meters. This made the prompt less like a dashboard and more like a subjective situation Maya has to interpret.
+
 The second surprise was that an LLM can sound thoughtful while still taking the wrong kind of action. In Run 001, Maya explained that she should eat or rest, but selected vague movement actions that the environment could not treat as eating or resting. That failure led to the structured action schema.
 
 The third surprise was that reflection did not matter until the task actually required generalization. In the early project-progress task, no-reflection and no-retrieval baselines still succeeded. Reflection became more meaningful only after the Jordan task required Maya to notice a pattern: vague messages were not working, so she needed to ask Jordan directly in person for exact baseline details.
